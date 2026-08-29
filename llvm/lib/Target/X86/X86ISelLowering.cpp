@@ -52736,34 +52736,38 @@ static SDValue combineAndMaskToShift(SDNode *N, const SDLoc &DL,
   return DAG.getBitcast(N->getValueType(0), Shift);
 }
 
-// Get the index node from the lowered DAG of a GEP IR instruction with one
-// indexing dimension.
-static SDValue getIndexFromUnindexedLoad(LoadSDNode *Ld, unsigned EltBytes) {
+// Match the address of a load from a constant table indexed by a variable:
+//   (add (shl Idx, log2(EltBytes)), GlobalAddress)
+// in either operand order. Whether the global ends up on the LHS or the RHS
+// depends on the relocation model: SelectionDAG only canonicalizes a
+// GlobalAddress to the RHS when TLI::isOffsetFoldingLegal() holds, which is
+// not the case for PIC. This runs after legalization, so the global is
+// wrapped in X86ISD::Wrapper / X86ISD::WrapperRIP.
+static const GlobalVariable *
+matchConstantTableAddress(SDValue Ptr, unsigned EltBytes, SDValue &Index) {
   using namespace llvm::SDPatternMatch;
-  if (Ld->isIndexed())
-    return SDValue();
+  if (Ptr.getOpcode() != ISD::ADD)
+    return nullptr;
 
-  SDValue Base = Ld->getBasePtr();
-  if (Base.getOpcode() != ISD::ADD)
-    return SDValue();
-
-  // The index must be scaled by exactly the element size.
-  SDValue Index;
-  if (!sd_match(Base.getOperand(0),
-                m_Shl(m_Value(Index), m_SpecificInt(Log2_32(EltBytes)))))
-    return SDValue();
-
-  // The other operand must be the start of the table: a constant offset
-  // folded into the global address would shift the index.
-  SDValue GlobalOp = Base.getOperand(1);
-  if (GlobalOp.getOpcode() == X86ISD::Wrapper ||
-      GlobalOp.getOpcode() == X86ISD::WrapperRIP)
-    GlobalOp = GlobalOp.getOperand(0);
-  auto *GA = dyn_cast<GlobalAddressSDNode>(GlobalOp);
-  if (!GA || GA->getOffset() != 0)
-    return SDValue();
-
-  return Index;
+  for (unsigned I = 0; I != 2; ++I) {
+    SDValue GlobalOp = Ptr.getOperand(I);
+    if (GlobalOp.getOpcode() == X86ISD::Wrapper ||
+        GlobalOp.getOpcode() == X86ISD::WrapperRIP)
+      GlobalOp = GlobalOp.getOperand(0);
+    auto *GA = dyn_cast<GlobalAddressSDNode>(GlobalOp);
+    if (!GA || GA->getOffset() != 0)
+      continue;
+    auto *GV = dyn_cast<GlobalVariable>(GA->getGlobal());
+    if (!GV)
+      continue;
+    SDValue Idx;
+    if (!sd_match(Ptr.getOperand(1 - I),
+                  m_Shl(m_Value(Idx), m_SpecificInt(Log2_32(EltBytes)))))
+      continue;
+    Index = Idx;
+    return GV;
+  }
+  return nullptr;
 }
 
 static bool hasBZHI(const X86Subtarget &Subtarget, MVT VT) {
@@ -52854,59 +52858,53 @@ static SDValue combineAndLoadToBZHI(SDNode *Node, SelectionDAG &DAG,
     // The operand must be a plain load of a whole table element: an
     // extending load only reads part of the mask.
     auto *Ld = dyn_cast<LoadSDNode>(Node->getOperand(i));
-    if (!Ld || !Ld->isSimple() || Ld->getExtensionType() != ISD::NON_EXTLOAD)
-      continue;
-    const Value *MemOp = Ld->getMemOperand()->getValue();
-    if (!MemOp)
-      continue;
-    // Get the Node which indexes into the array.
-    SDValue Index = getIndexFromUnindexedLoad(Ld, VT.getSizeInBits() / 8);
-    if (!Index)
+    if (!Ld || !Ld->isSimple() || Ld->isIndexed() ||
+        Ld->getExtensionType() != ISD::NON_EXTLOAD)
       continue;
 
-    if (auto *GEP = dyn_cast<GetElementPtrInst>(MemOp)) {
-      if (auto *GV = dyn_cast<GlobalVariable>(GEP->getOperand(0))) {
-        if (GV->isConstant() && GV->hasDefinitiveInitializer()) {
-          Constant *Init = GV->getInitializer();
-          Type *Ty = Init->getType();
-          if (!isa<ConstantDataArray>(Init) ||
-              !Ty->getArrayElementType()->isIntegerTy() ||
-              Ty->getArrayElementType()->getScalarSizeInBits() !=
-                  VT.getSizeInBits() ||
-              Ty->getArrayNumElements() >
-                  Ty->getArrayElementType()->getScalarSizeInBits())
-            continue;
+    SDValue Index;
+    const GlobalVariable *GV = matchConstantTableAddress(
+        Ld->getBasePtr(), VT.getSizeInBits() / 8, Index);
+    if (!GV || !GV->isConstant() || !GV->hasDefinitiveInitializer())
+      continue;
 
-          // Check if the array's constant elements are suitable to our case.
-          uint64_t ArrayElementCount = Init->getType()->getArrayNumElements();
-          bool ConstantsMatch = true;
-          for (uint64_t j = 0; j < ArrayElementCount; j++) {
-            auto *Elem = cast<ConstantInt>(Init->getAggregateElement(j));
-            if (Elem->getZExtValue() != (((uint64_t)1 << j) - 1)) {
-              ConstantsMatch = false;
-              break;
-            }
-          }
-          if (!ConstantsMatch)
-            continue;
+    const Constant *Init = GV->getInitializer();
+    Type *Ty = Init->getType();
+    if (!isa<ConstantDataArray>(Init) ||
+        !Ty->getArrayElementType()->isIntegerTy() ||
+        Ty->getArrayElementType()->getScalarSizeInBits() !=
+            VT.getSizeInBits() ||
+        Ty->getArrayNumElements() >
+            Ty->getArrayElementType()->getScalarSizeInBits())
+      continue;
 
-          // Do the transformation (For 32-bit type):
-          // -> (and (load arr[idx]), inp)
-          // <- (and (srl 0xFFFFFFFF, (sub 32, idx)))
-          //    that will be replaced with one bzhi instruction.
-          SDValue Inp = Node->getOperand(i == 0 ? 1 : 0);
-          SDValue SizeC = DAG.getConstant(VT.getSizeInBits(), dl, MVT::i32);
-
-          Index = DAG.getZExtOrTrunc(Index, dl, MVT::i32);
-          SDValue Sub = DAG.getNode(ISD::SUB, dl, MVT::i32, SizeC, Index);
-          Sub = DAG.getNode(ISD::TRUNCATE, dl, MVT::i8, Sub);
-
-          SDValue AllOnes = DAG.getAllOnesConstant(dl, VT);
-          SDValue LShr = DAG.getNode(ISD::SRL, dl, VT, AllOnes, Sub);
-          return DAG.getNode(ISD::AND, dl, VT, Inp, LShr);
-        }
+    // Check if the array's constant elements are suitable to our case.
+    uint64_t ArrayElementCount = Init->getType()->getArrayNumElements();
+    bool ConstantsMatch = true;
+    for (uint64_t j = 0; j < ArrayElementCount; j++) {
+      auto *Elem = cast<ConstantInt>(Init->getAggregateElement(j));
+      if (Elem->getZExtValue() != (((uint64_t)1 << j) - 1)) {
+        ConstantsMatch = false;
+        break;
       }
     }
+    if (!ConstantsMatch)
+      continue;
+
+    // Do the transformation (For 32-bit type):
+    // -> (and (load arr[idx]), inp)
+    // <- (and (srl 0xFFFFFFFF, (sub 32, idx)))
+    //    that will be replaced with one bzhi instruction.
+    SDValue Inp = Node->getOperand(i == 0 ? 1 : 0);
+    SDValue SizeC = DAG.getConstant(VT.getSizeInBits(), dl, MVT::i32);
+
+    Index = DAG.getZExtOrTrunc(Index, dl, MVT::i32);
+    SDValue Sub = DAG.getNode(ISD::SUB, dl, MVT::i32, SizeC, Index);
+    Sub = DAG.getNode(ISD::TRUNCATE, dl, MVT::i8, Sub);
+
+    SDValue AllOnes = DAG.getAllOnesConstant(dl, VT);
+    SDValue LShr = DAG.getNode(ISD::SRL, dl, VT, AllOnes, Sub);
+    return DAG.getNode(ISD::AND, dl, VT, Inp, LShr);
   }
   return SDValue();
 }

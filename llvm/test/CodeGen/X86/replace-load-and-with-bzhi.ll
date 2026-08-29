@@ -14,18 +14,10 @@
 @mutable_table32 = internal unnamed_addr global [32 x i32] [i32 0, i32 1, i32 3, i32 7, i32 15, i32 31, i32 63, i32 127, i32 255, i32 511, i32 1023, i32 2047, i32 4095, i32 8191, i32 16383, i32 32767, i32 65535, i32 131071, i32 262143, i32 524287, i32 1048575, i32 2097151, i32 4194303, i32 8388607, i32 16777215, i32 33554431, i32 67108863, i32 134217727, i32 268435455, i32 536870911, i32 1073741823, i32 2147483647], align 16
 
 define i32 @f32_bzhi(i32 %x, i32 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f32_bzhi:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    bzhil %esi, %edi, %eax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f32_bzhi:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movl %edi, %eax
-; X64-PIC-NEXT:    movslq %esi, %rcx
-; X64-PIC-NEXT:    leaq fill_table32(%rip), %rdx
-; X64-PIC-NEXT:    andl (%rdx,%rcx,4), %eax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f32_bzhi:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    bzhil %esi, %edi, %eax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f32_bzhi:
 ; X86:       # %bb.0: # %entry
@@ -41,18 +33,10 @@ entry:
 }
 
 define i32 @f32_bzhi_commute(i32 %x, i32 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f32_bzhi_commute:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    bzhil %esi, %edi, %eax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f32_bzhi_commute:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movl %edi, %eax
-; X64-PIC-NEXT:    movslq %esi, %rcx
-; X64-PIC-NEXT:    leaq fill_table32(%rip), %rdx
-; X64-PIC-NEXT:    andl (%rdx,%rcx,4), %eax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f32_bzhi_commute:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    bzhil %esi, %edi, %eax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f32_bzhi_commute:
 ; X86:       # %bb.0: # %entry
@@ -68,18 +52,10 @@ entry:
 }
 
 define i32 @f32_bzhi_partial(i32 %x, i32 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f32_bzhi_partial:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    bzhil %esi, %edi, %eax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f32_bzhi_partial:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movl %edi, %eax
-; X64-PIC-NEXT:    movslq %esi, %rcx
-; X64-PIC-NEXT:    leaq fill_table32_partial(%rip), %rdx
-; X64-PIC-NEXT:    andl (%rdx,%rcx,4), %eax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f32_bzhi_partial:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    bzhil %esi, %edi, %eax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f32_bzhi_partial:
 ; X86:       # %bb.0: # %entry
@@ -95,18 +71,10 @@ entry:
 }
 
 define i32 @f32_bzhi_partial_commute(i32 %x, i32 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f32_bzhi_partial_commute:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    bzhil %esi, %edi, %eax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f32_bzhi_partial_commute:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movl %edi, %eax
-; X64-PIC-NEXT:    movslq %esi, %rcx
-; X64-PIC-NEXT:    leaq fill_table32_partial(%rip), %rdx
-; X64-PIC-NEXT:    andl (%rdx,%rcx,4), %eax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f32_bzhi_partial_commute:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    bzhil %esi, %edi, %eax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f32_bzhi_partial_commute:
 ; X86:       # %bb.0: # %entry
@@ -122,17 +90,10 @@ entry:
 }
 
 define i64 @f64_bzhi(i64 %x, i64 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f64_bzhi:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    bzhiq %rsi, %rdi, %rax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f64_bzhi:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movq %rdi, %rax
-; X64-PIC-NEXT:    leaq fill_table64(%rip), %rcx
-; X64-PIC-NEXT:    andq (%rcx,%rsi,8), %rax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f64_bzhi:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    bzhiq %rsi, %rdi, %rax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f64_bzhi:
 ; X86:       # %bb.0: # %entry
@@ -150,17 +111,10 @@ entry:
 }
 
 define i64 @f64_bzhi_commute(i64 %x, i64 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f64_bzhi_commute:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    bzhiq %rsi, %rdi, %rax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f64_bzhi_commute:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movq %rdi, %rax
-; X64-PIC-NEXT:    leaq fill_table64(%rip), %rcx
-; X64-PIC-NEXT:    andq (%rcx,%rsi,8), %rax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f64_bzhi_commute:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    bzhiq %rsi, %rdi, %rax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f64_bzhi_commute:
 ; X86:       # %bb.0: # %entry
@@ -178,17 +132,10 @@ entry:
 }
 
 define i64 @f64_bzhi_partial(i64 %x, i64 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f64_bzhi_partial:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    bzhiq %rsi, %rdi, %rax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f64_bzhi_partial:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movq %rdi, %rax
-; X64-PIC-NEXT:    leaq fill_table64_partial(%rip), %rcx
-; X64-PIC-NEXT:    andq (%rcx,%rsi,8), %rax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f64_bzhi_partial:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    bzhiq %rsi, %rdi, %rax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f64_bzhi_partial:
 ; X86:       # %bb.0: # %entry
@@ -206,17 +153,10 @@ entry:
 }
 
 define i64 @f64_bzhi_partial_commute(i64 %x, i64 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f64_bzhi_partial_commute:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    bzhiq %rsi, %rdi, %rax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f64_bzhi_partial_commute:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movq %rdi, %rax
-; X64-PIC-NEXT:    leaq fill_table64_partial(%rip), %rcx
-; X64-PIC-NEXT:    andq (%rcx,%rsi,8), %rax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f64_bzhi_partial_commute:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    bzhiq %rsi, %rdi, %rax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f64_bzhi_partial_commute:
 ; X86:       # %bb.0: # %entry
@@ -296,18 +236,10 @@ entry:
 
 ; The other operand of the and is a load that can become the bzhi memory operand.
 define i32 @f32_bzhi_load(ptr %p, i32 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f32_bzhi_load:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    bzhil %esi, (%rdi), %eax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f32_bzhi_load:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movslq %esi, %rax
-; X64-PIC-NEXT:    leaq fill_table32(%rip), %rcx
-; X64-PIC-NEXT:    movl (%rcx,%rax,4), %eax
-; X64-PIC-NEXT:    andl (%rdi), %eax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f32_bzhi_load:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    bzhil %esi, (%rdi), %eax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f32_bzhi_load:
 ; X86:       # %bb.0: # %entry
@@ -358,17 +290,10 @@ entry:
 
 ; The canonical i8-typed GEP form with a pre-scaled offset.
 define i32 @f32_bzhi_i8_gep(i32 %x, i64 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f32_bzhi_i8_gep:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    bzhil %esi, %edi, %eax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f32_bzhi_i8_gep:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movl %edi, %eax
-; X64-PIC-NEXT:    leaq fill_table32(%rip), %rcx
-; X64-PIC-NEXT:    andl (%rcx,%rsi,4), %eax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f32_bzhi_i8_gep:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    bzhil %esi, %edi, %eax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f32_bzhi_i8_gep:
 ; X86:       # %bb.0: # %entry
@@ -652,5 +577,3 @@ entry:
   %and = and i32 %0, %x
   ret i32 %and
 }
-;; NOTE: These prefixes are unused and the list is autogenerated. Do not add tests below this line:
-; X64: {{.*}}
