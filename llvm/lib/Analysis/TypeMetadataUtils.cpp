@@ -106,6 +106,18 @@ void llvm::findDevirtualizableCallsForTypeTest(
         M, DevirtCalls, CI->getArgOperand(0)->stripPointerCasts(), 0, CI, DT);
 }
 
+void llvm::findVirtualCallsForTypeTest(
+    SmallVectorImpl<DevirtCallSite> &VirtualCalls, const CallInst *CI,
+    DominatorTree &DT) {
+  assert(CI->getCalledFunction()->getIntrinsicID() == Intrinsic::type_test ||
+         CI->getCalledFunction()->getIntrinsicID() ==
+             Intrinsic::public_type_test);
+
+  const Module *M = CI->getParent()->getParent()->getParent();
+  findLoadCallsAtConstantOffset(
+      M, VirtualCalls, CI->getArgOperand(0)->stripPointerCasts(), 0, CI, DT);
+}
+
 void llvm::findDevirtualizableCallsForTypeCheckedLoad(
     SmallVectorImpl<DevirtCallSite> &DevirtCalls,
     SmallVectorImpl<Instruction *> &LoadedPtrs,
