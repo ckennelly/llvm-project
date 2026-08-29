@@ -176,26 +176,15 @@ entry:
 ; The table may also hold the (1 << 32) - 1 entry, since bzhi keeps every bit
 ; for an index >= the bitwidth.
 define i32 @f32_bzhi_full(i32 %x, i32 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f32_bzhi_full:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    movl %edi, %eax
-; X64-STATIC-NEXT:    movslq %esi, %rcx
-; X64-STATIC-NEXT:    andl fill_table32_full(,%rcx,4), %eax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f32_bzhi_full:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movl %edi, %eax
-; X64-PIC-NEXT:    movslq %esi, %rcx
-; X64-PIC-NEXT:    leaq fill_table32_full(%rip), %rdx
-; X64-PIC-NEXT:    andl (%rdx,%rcx,4), %eax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f32_bzhi_full:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    bzhil %esi, %edi, %eax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f32_bzhi_full:
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movl fill_table32_full(,%eax,4), %eax
-; X86-NEXT:    andl {{[0-9]+}}(%esp), %eax
+; X86-NEXT:    bzhil %eax, {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    retl
 entry:
   %idxprom = sext i32 %y to i64
@@ -206,18 +195,10 @@ entry:
 }
 
 define i64 @f64_bzhi_full(i64 %x, i64 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f64_bzhi_full:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    movq %rdi, %rax
-; X64-STATIC-NEXT:    andq fill_table64_full(,%rsi,8), %rax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f64_bzhi_full:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movq %rdi, %rax
-; X64-PIC-NEXT:    leaq fill_table64_full(%rip), %rcx
-; X64-PIC-NEXT:    andq (%rcx,%rsi,8), %rax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f64_bzhi_full:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    bzhiq %rsi, %rdi, %rax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f64_bzhi_full:
 ; X86:       # %bb.0: # %entry
@@ -245,7 +226,7 @@ define i32 @f32_bzhi_load(ptr %p, i32 %y) local_unnamed_addr {
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
-; X86-NEXT:    bzhil %ecx, (%eax), %eax
+; X86-NEXT:    bzhil %eax, (%ecx), %eax
 ; X86-NEXT:    retl
 entry:
   %x = load i32, ptr %p, align 4
@@ -258,26 +239,17 @@ entry:
 
 ; The constant part of the index ends up as a byte offset on the address.
 define i32 @f32_bzhi_index_add(i32 %x, i32 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f32_bzhi_index_add:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    movl %edi, %eax
-; X64-STATIC-NEXT:    movslq %esi, %rcx
-; X64-STATIC-NEXT:    andl fill_table32+4(,%rcx,4), %eax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f32_bzhi_index_add:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movl %edi, %eax
-; X64-PIC-NEXT:    movslq %esi, %rcx
-; X64-PIC-NEXT:    leaq fill_table32(%rip), %rdx
-; X64-PIC-NEXT:    andl 4(%rdx,%rcx,4), %eax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f32_bzhi_index_add:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    incl %esi
+; X64-NEXT:    bzhil %esi, %edi, %eax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f32_bzhi_index_add:
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movl fill_table32+4(,%eax,4), %eax
-; X86-NEXT:    andl {{[0-9]+}}(%esp), %eax
+; X86-NEXT:    incl %eax
+; X86-NEXT:    bzhil %eax, {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    retl
 entry:
   %inc = add nsw i32 %y, 1
@@ -339,24 +311,17 @@ entry:
 
 ; fill_table32[y + 1], with the offset on the global.
 define i32 @f32_bzhi_global_offset(i32 %x, i64 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f32_bzhi_global_offset:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    movl %edi, %eax
-; X64-STATIC-NEXT:    andl fill_table32+4(,%rsi,4), %eax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f32_bzhi_global_offset:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movl %edi, %eax
-; X64-PIC-NEXT:    leaq fill_table32(%rip), %rcx
-; X64-PIC-NEXT:    andl 4(%rcx,%rsi,4), %eax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f32_bzhi_global_offset:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    incl %esi
+; X64-NEXT:    bzhil %esi, %edi, %eax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f32_bzhi_global_offset:
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movl fill_table32+4(,%eax,4), %eax
-; X86-NEXT:    andl {{[0-9]+}}(%esp), %eax
+; X86-NEXT:    incl %eax
+; X86-NEXT:    bzhil %eax, {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    retl
 entry:
   %offset = shl nuw nsw i64 %y, 2
@@ -368,24 +333,17 @@ entry:
 
 ; fill_table32[y - 1]
 define i32 @f32_bzhi_global_offset_negative(i32 %x, i64 %y) local_unnamed_addr {
-; X64-STATIC-LABEL: f32_bzhi_global_offset_negative:
-; X64-STATIC:       # %bb.0: # %entry
-; X64-STATIC-NEXT:    movl %edi, %eax
-; X64-STATIC-NEXT:    andl fill_table32-4(,%rsi,4), %eax
-; X64-STATIC-NEXT:    retq
-;
-; X64-PIC-LABEL: f32_bzhi_global_offset_negative:
-; X64-PIC:       # %bb.0: # %entry
-; X64-PIC-NEXT:    movl %edi, %eax
-; X64-PIC-NEXT:    leaq fill_table32(%rip), %rcx
-; X64-PIC-NEXT:    andl -4(%rcx,%rsi,4), %eax
-; X64-PIC-NEXT:    retq
+; X64-LABEL: f32_bzhi_global_offset_negative:
+; X64:       # %bb.0: # %entry
+; X64-NEXT:    decl %esi
+; X64-NEXT:    bzhil %esi, %edi, %eax
+; X64-NEXT:    retq
 ;
 ; X86-LABEL: f32_bzhi_global_offset_negative:
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movl fill_table32-4(,%eax,4), %eax
-; X86-NEXT:    andl {{[0-9]+}}(%esp), %eax
+; X86-NEXT:    decl %eax
+; X86-NEXT:    bzhil %eax, {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    retl
 entry:
   %offset = shl nuw nsw i64 %y, 2

@@ -52736,40 +52736,6 @@ static SDValue combineAndMaskToShift(SDNode *N, const SDLoc &DL,
   return DAG.getBitcast(N->getValueType(0), Shift);
 }
 
-// Match the address of a load from a constant table indexed by a variable:
-//   (add (shl Idx, log2(EltBytes)), GlobalAddress)
-// in either operand order. Whether the global ends up on the LHS or the RHS
-// depends on the relocation model: SelectionDAG only canonicalizes a
-// GlobalAddress to the RHS when TLI::isOffsetFoldingLegal() holds, which is
-// not the case for PIC. This runs after legalization, so the global is
-// wrapped in X86ISD::Wrapper / X86ISD::WrapperRIP.
-static const GlobalVariable *
-matchConstantTableAddress(SDValue Ptr, unsigned EltBytes, SDValue &Index) {
-  using namespace llvm::SDPatternMatch;
-  if (Ptr.getOpcode() != ISD::ADD)
-    return nullptr;
-
-  for (unsigned I = 0; I != 2; ++I) {
-    SDValue GlobalOp = Ptr.getOperand(I);
-    if (GlobalOp.getOpcode() == X86ISD::Wrapper ||
-        GlobalOp.getOpcode() == X86ISD::WrapperRIP)
-      GlobalOp = GlobalOp.getOperand(0);
-    auto *GA = dyn_cast<GlobalAddressSDNode>(GlobalOp);
-    if (!GA || GA->getOffset() != 0)
-      continue;
-    auto *GV = dyn_cast<GlobalVariable>(GA->getGlobal());
-    if (!GV)
-      continue;
-    SDValue Idx;
-    if (!sd_match(Ptr.getOperand(1 - I),
-                  m_Shl(m_Value(Idx), m_SpecificInt(Log2_32(EltBytes)))))
-      continue;
-    Index = Idx;
-    return GV;
-  }
-  return nullptr;
-}
-
 static bool hasBZHI(const X86Subtarget &Subtarget, MVT VT) {
   return Subtarget.hasBMI2() &&
          (VT == MVT::i32 || (VT == MVT::i64 && Subtarget.is64Bit()));
@@ -52834,6 +52800,61 @@ static SDValue combineMaskBitOp(SDNode *N, const SDLoc &DL, SelectionDAG &DAG) {
   return SDValue();
 }
 
+// Match the address of a load from a constant table indexed by a variable:
+//   (add (shl Idx, log2(EltBytes)), GlobalAddress)
+// in either operand order. Whether the global ends up on the LHS or the RHS
+// depends on the relocation model: SelectionDAG only canonicalizes a
+// GlobalAddress to the RHS when TLI::isOffsetFoldingLegal() holds, which is
+// not the case for PIC. This runs after legalization, so the global is
+// wrapped in X86ISD::Wrapper / X86ISD::WrapperRIP.
+//
+// A constant part of the index (Table[Idx + K]) usually ends up as a byte
+// offset on the address instead: folded into the global address, added to
+// the global address, or added to the whole address, depending on the
+// relocation model and on how far DAG combining has got. All three forms are
+// accepted and reported as IndexOffset, so the loaded element is
+// Table[Index + IndexOffset].
+static const GlobalVariable *matchConstantTableAddress(SDValue Ptr,
+                                                       unsigned EltBytes,
+                                                       SDValue &Index,
+                                                       int64_t &IndexOffset) {
+  using namespace llvm::SDPatternMatch;
+
+  int64_t ByteOffset = 0;
+  SDValue Inner;
+  if (sd_match(Ptr, m_Add(m_Value(Inner), m_ConstInt(ByteOffset))))
+    Ptr = Inner;
+  if (Ptr.getOpcode() != ISD::ADD)
+    return nullptr;
+
+  for (unsigned I = 0; I != 2; ++I) {
+    SDValue GlobalOp = Ptr.getOperand(I);
+    int64_t GlobalOpOffset = 0;
+    if (sd_match(GlobalOp, m_Add(m_Value(Inner), m_ConstInt(GlobalOpOffset))))
+      GlobalOp = Inner;
+    if (GlobalOp.getOpcode() == X86ISD::Wrapper ||
+        GlobalOp.getOpcode() == X86ISD::WrapperRIP)
+      GlobalOp = GlobalOp.getOperand(0);
+    auto *GA = dyn_cast<GlobalAddressSDNode>(GlobalOp);
+    if (!GA)
+      continue;
+    auto *GV = dyn_cast<GlobalVariable>(GA->getGlobal());
+    if (!GV)
+      continue;
+    SDValue Idx;
+    if (!sd_match(Ptr.getOperand(1 - I),
+                  m_Shl(m_Value(Idx), m_SpecificInt(Log2_32(EltBytes)))))
+      continue;
+    int64_t TotalOffset = ByteOffset + GlobalOpOffset + GA->getOffset();
+    if (TotalOffset % (int64_t)EltBytes != 0)
+      return nullptr;
+    Index = Idx;
+    IndexOffset = TotalOffset / (int64_t)EltBytes;
+    return GV;
+  }
+  return nullptr;
+}
+
 // This function recognizes cases where X86 bzhi instruction can replace and
 // 'and-load' sequence.
 // In case of loading integer value from an array of constants which is defined
@@ -52843,7 +52864,8 @@ static SDValue combineMaskBitOp(SDNode *N, const SDLoc &DL, SelectionDAG &DAG) {
 //
 // then applying a bitwise and on the result with another input.
 // It's equivalent to performing bzhi (zero high bits) on the input, with the
-// same index of the load.
+// same index of the load. The array may also carry one extra all-ones element
+// at index == bitwidth, which matches bzhi's behavior for such an index.
 static SDValue combineAndLoadToBZHI(SDNode *Node, SelectionDAG &DAG,
                                     const X86Subtarget &Subtarget) {
   MVT VT = Node->getSimpleValueType(0);
@@ -52853,37 +52875,38 @@ static SDValue combineAndLoadToBZHI(SDNode *Node, SelectionDAG &DAG,
   if (!hasBZHI(Subtarget, VT))
     return SDValue();
 
+  unsigned BitWidth = VT.getSizeInBits();
+
   // Try matching the pattern for both operands.
   for (unsigned i = 0; i < 2; i++) {
-    // The operand must be a plain load of a whole table element: an
-    // extending load only reads part of the mask.
+    // The operand must be a plain load of a whole table element: no extending
+    // loads (a narrower element would not be the mask we expect), no indexed
+    // loads and nothing volatile/atomic.
     auto *Ld = dyn_cast<LoadSDNode>(Node->getOperand(i));
     if (!Ld || !Ld->isSimple() || Ld->isIndexed() ||
         Ld->getExtensionType() != ISD::NON_EXTLOAD)
       continue;
 
     SDValue Index;
+    int64_t IndexOffset = 0;
     const GlobalVariable *GV = matchConstantTableAddress(
-        Ld->getBasePtr(), VT.getSizeInBits() / 8, Index);
+        Ld->getBasePtr(), BitWidth / 8, Index, IndexOffset);
     if (!GV || !GV->isConstant() || !GV->hasDefinitiveInitializer())
       continue;
 
-    const Constant *Init = GV->getInitializer();
-    Type *Ty = Init->getType();
-    if (!isa<ConstantDataArray>(Init) ||
-        !Ty->getArrayElementType()->isIntegerTy() ||
-        Ty->getArrayElementType()->getScalarSizeInBits() !=
-            VT.getSizeInBits() ||
-        Ty->getArrayNumElements() >
-            Ty->getArrayElementType()->getScalarSizeInBits())
+    auto *Init = dyn_cast<ConstantDataArray>(GV->getInitializer());
+    if (!Init || !Init->getElementType()->isIntegerTy(BitWidth))
       continue;
 
-    // Check if the array's constant elements are suitable to our case.
-    uint64_t ArrayElementCount = Init->getType()->getArrayNumElements();
+    // Check if the array's constant elements are suitable to our case:
+    // element j must be (1 << j) - 1. For j == BitWidth that is all-ones,
+    // which is also what bzhi produces for an index >= BitWidth.
+    unsigned NumElts = Init->getNumElements();
+    if (NumElts > BitWidth + 1)
+      continue;
     bool ConstantsMatch = true;
-    for (uint64_t j = 0; j < ArrayElementCount; j++) {
-      auto *Elem = cast<ConstantInt>(Init->getAggregateElement(j));
-      if (Elem->getZExtValue() != (((uint64_t)1 << j) - 1)) {
+    for (unsigned j = 0; j != NumElts; ++j) {
+      if (Init->getElementAsAPInt(j) != APInt::getLowBitsSet(BitWidth, j)) {
         ConstantsMatch = false;
         break;
       }
@@ -52891,20 +52914,23 @@ static SDValue combineAndLoadToBZHI(SDNode *Node, SelectionDAG &DAG,
     if (!ConstantsMatch)
       continue;
 
-    // Do the transformation (For 32-bit type):
+    // Do the transformation:
     // -> (and (load arr[idx]), inp)
-    // <- (and (srl 0xFFFFFFFF, (sub 32, idx)))
-    //    that will be replaced with one bzhi instruction.
-    SDValue Inp = Node->getOperand(i == 0 ? 1 : 0);
-    SDValue SizeC = DAG.getConstant(VT.getSizeInBits(), dl, MVT::i32);
-
-    Index = DAG.getZExtOrTrunc(Index, dl, MVT::i32);
-    SDValue Sub = DAG.getNode(ISD::SUB, dl, MVT::i32, SizeC, Index);
-    Sub = DAG.getNode(ISD::TRUNCATE, dl, MVT::i8, Sub);
-
-    SDValue AllOnes = DAG.getAllOnesConstant(dl, VT);
-    SDValue LShr = DAG.getNode(ISD::SRL, dl, VT, AllOnes, Sub);
-    return DAG.getNode(ISD::AND, dl, VT, Inp, LShr);
+    // <- (bzhi inp, idx)
+    // bzhi only looks at the low 8 bits of its index, so it does not matter
+    // how the index gets to VT: look through the extension to pointer width
+    // that SelectionDAGBuilder put on the GEP index and any-extend instead.
+    SDValue Inp = Node->getOperand(1 - i);
+    if ((Index.getOpcode() == ISD::SIGN_EXTEND ||
+         Index.getOpcode() == ISD::ZERO_EXTEND ||
+         Index.getOpcode() == ISD::ANY_EXTEND) &&
+        Index.getOperand(0).getValueSizeInBits() >= 8)
+      Index = Index.getOperand(0);
+    Index = DAG.getAnyExtOrTrunc(Index, dl, VT);
+    if (IndexOffset != 0)
+      Index = DAG.getNode(ISD::ADD, dl, VT, Index,
+                          DAG.getSignedConstant(IndexOffset, dl, VT));
+    return DAG.getNode(X86ISD::BZHI, dl, VT, Inp, Index);
   }
   return SDValue();
 }
