@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Utils/CallPromotionUtils.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Analysis/CtxProfAnalysis.h"
 #include "llvm/Analysis/Loads.h"
 #include "llvm/Analysis/TypeMetadataUtils.h"
@@ -22,11 +23,19 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/ProfileData/PGOCtxProfReader.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/ValueMapper.h"
 
 using namespace llvm;
 
 #define DEBUG_TYPE "call-promotion-utils"
+
+static cl::opt<bool> HoistPromotionCondAboveTypeTest(
+    "icp-hoist-cond-above-type-test", cl::init(true), cl::Hidden,
+    cl::desc("When promoting an indirect call whose callee is guarded by a "
+             "CFI type test, evaluate the promotion condition before the "
+             "type test so that the direct call does not pay for the check"));
 
 /// Fix-up phi nodes in an invoke instruction's normal destination.
 ///
@@ -378,6 +387,240 @@ static CallBase &versionCallSiteWithCond(CallBase &CB, Value *Cond,
   return *NewInst;
 }
 
+/// A CFI type test that guards a call site: the block of the call site is
+/// reached from the true edge of a branch on the type test, possibly through
+/// blocks that just fall through to the next one (as left behind by earlier
+/// promotions of the same call site).
+struct TypeTestGuard {
+  CallInst *TypeTest = nullptr;
+  CondBrInst *Br = nullptr;
+  /// The blocks from the true successor of the branch to the block of the call
+  /// site, each the unique predecessor of the next.
+  SmallVector<BasicBlock *, 2> Blocks;
+};
+
+/// Returns the type test on \p Ptr guarding entry into \p BB, if any. This is
+/// the shape that -fsanitize=cfi-icall and -fsanitize=cfi-vcall emit before a
+/// call.
+static std::optional<TypeTestGuard> findTypeTestGuard(BasicBlock *BB,
+                                                      Value *Ptr) {
+  TypeTestGuard Guard;
+  Guard.Blocks.push_back(BB);
+  for (unsigned Depth = 0; Depth < 4; ++Depth) {
+    BasicBlock *First = Guard.Blocks.front();
+    BasicBlock *Pred = First->getUniquePredecessor();
+    if (!Pred)
+      return std::nullopt;
+    if (isa<UncondBrInst>(Pred->getTerminator())) {
+      Guard.Blocks.insert(Guard.Blocks.begin(), Pred);
+      continue;
+    }
+    auto *Br = dyn_cast<CondBrInst>(Pred->getTerminator());
+    if (!Br || Br->getSuccessor(0) != First || Br->getSuccessor(1) == First)
+      return std::nullopt;
+    auto *TypeTest = dyn_cast<CallInst>(Br->getCondition());
+    if (!TypeTest || TypeTest->getIntrinsicID() != Intrinsic::type_test ||
+        TypeTest->getArgOperand(0)->stripPointerCasts() !=
+            Ptr->stripPointerCasts())
+      return std::nullopt;
+    Guard.TypeTest = TypeTest;
+    Guard.Br = Br;
+    return Guard;
+  }
+  return std::nullopt;
+}
+
+/// Returns true if \p C points into a global that carries the type identifier
+/// tested by \p TypeTest at that offset, i.e. the type test is known to
+/// succeed when the tested pointer is equal to \p C.
+static bool passesTypeTest(Constant *C, const CallInst *TypeTest,
+                           const DataLayout &DL) {
+  Metadata *TypeId =
+      cast<MetadataAsValue>(TypeTest->getArgOperand(1))->getMetadata();
+  APInt Offset(DL.getIndexTypeSizeInBits(C->getType()), 0);
+  auto *GO = dyn_cast<GlobalObject>(C->stripAndAccumulateConstantOffsets(
+      DL, Offset, /*AllowNonInbounds=*/true));
+  if (!GO)
+    return false;
+  SmallVector<MDNode *, 2> Types;
+  GO->getMetadata(LLVMContext::MD_type, Types);
+  for (MDNode *Type : Types) {
+    if (Type->getOperand(1) != TypeId)
+      continue;
+    auto *TypeOffset = mdconst::dyn_extract<ConstantInt>(Type->getOperand(0));
+    if (TypeOffset && Offset == TypeOffset->getZExtValue())
+      return true;
+  }
+  return false;
+}
+
+/// Returns true if the promotion condition for \p CB can be evaluated before
+/// the type test \p Guard. The guarded blocks must contain nothing before
+/// \p CB except pseudo probes, which stay with the indirect call, and
+/// instructions without side effects, which are cloned onto the direct path
+/// when it uses them.
+static bool canHoistPromotionCond(const CallBase &CB,
+                                  const TypeTestGuard &Guard) {
+  if (!isa<CallInst>(CB) || CB.isMustTailCall())
+    return false;
+  for (const BasicBlock *BB : Guard.Blocks) {
+    for (const Instruction &I : *BB) {
+      if (&I == &CB)
+        return true;
+      if (isa<PHINode>(I))
+        return false;
+      if (I.isTerminator() || isa<PseudoProbeInst>(I))
+        continue;
+      if (I.mayHaveSideEffects())
+        return false;
+    }
+  }
+  llvm_unreachable("call site is not in the guarded blocks");
+}
+
+/// \p DirectCall is the promoted copy of the original call site, which was
+/// guarded by \p Guard. Rewrite the CFG so that
+/// the promotion condition is evaluated before the type test and the direct
+/// call is reached without it:
+///
+///   pred:                                pred:
+///     %t = type.test(%p, T)                %c = icmp eq %p, @f
+///     br %t, cont, trap                    br %c, direct, guard
+///   cont:                     ==>        guard:
+///     %c = icmp eq %p, @f                  %t = type.test(%p, T)
+///     br %c, direct, indirect              br %t, cont, trap
+///   direct: call @f; br merge            cont: br indirect
+///   indirect: call %p; br merge          direct: call @f; br merge
+///   merge: ...                           indirect: call %p; br merge
+///                                        merge: ...
+///
+/// This is valid because the condition implies that the type test succeeds
+/// (see passesTypeTest). Instructions of the guarded blocks that precede the
+/// call are cloned into the direct block, and values defined there that are
+/// used after the merge get a phi node.
+static void hoistPromotionCondAboveTypeTest(const TypeTestGuard &Guard,
+                                            CallBase &DirectCall,
+                                            MDNode *BranchWeights) {
+  BasicBlock *ThenBlock = DirectCall.getParent();
+  BasicBlock *CondBlock = Guard.Blocks.back();
+  assert(ThenBlock->getSinglePredecessor() == CondBlock &&
+         "unexpected shape of the versioned call site");
+  auto *CondBr = cast<CondBrInst>(CondBlock->getTerminator());
+  assert(CondBr->getSuccessor(0) == ThenBlock &&
+         "unexpected shape of the versioned call site");
+  BasicBlock *ElseBlock = CondBr->getSuccessor(1);
+  BasicBlock *MergeBlock = ElseBlock->getSingleSuccessor();
+  Value *Cond = CondBr->getCondition();
+  CondBrInst *GuardBr = Guard.Br;
+  BasicBlock *Pred = GuardBr->getParent();
+  SmallPtrSet<const BasicBlock *, 4> GuardedBlocks;
+  for (BasicBlock *BB : Guard.Blocks)
+    GuardedBlocks.insert(BB);
+
+  // The condition must only depend on values available in the predecessor.
+  SmallPtrSet<Instruction *, 4> CondInsts;
+  SmallVector<Value *, 4> Worklist{Cond};
+  while (!Worklist.empty()) {
+    auto *I = dyn_cast<Instruction>(Worklist.pop_back_val());
+    if (!I || I->getParent() != CondBlock || !CondInsts.insert(I).second)
+      continue;
+    append_range(Worklist, I->operands());
+  }
+  for (Instruction *I : CondInsts)
+    for (Value *Op : I->operands())
+      if (auto *OpI = dyn_cast<Instruction>(Op))
+        if (GuardedBlocks.count(OpI->getParent()) && !CondInsts.count(OpI))
+          return;
+
+  // Split the guard into its own block. Take the type test along if it is
+  // right before the branch, so that it is only evaluated on the indirect
+  // path.
+  Instruction *SplitPt = GuardBr;
+  if (Guard.TypeTest->getParent() == Pred &&
+      Guard.TypeTest->getNextNode() == GuardBr)
+    SplitPt = Guard.TypeTest;
+  BasicBlock *GuardBlock =
+      Pred->splitBasicBlock(SplitPt->getIterator(), "if.type_test");
+
+  // Evaluate the condition in the predecessor and branch to the direct call
+  // when it holds, otherwise to the guard.
+  Instruction *PredTerm = Pred->getTerminator();
+  for (Instruction &I : llvm::make_early_inc_range(*CondBlock))
+    if (CondInsts.count(&I))
+      I.moveBefore(PredTerm->getIterator());
+  CondBrInst *NewBr =
+      CondBrInst::Create(Cond, ThenBlock, GuardBlock, PredTerm->getIterator());
+  NewBr->setDebugLoc(CondBr->getDebugLoc());
+  if (BranchWeights)
+    NewBr->setMetadata(LLVMContext::MD_prof, BranchWeights);
+  PredTerm->eraseFromParent();
+  ThenBlock->replacePhiUsesWith(CondBlock, Pred);
+
+  // The condition is now known to be false whenever the original block is
+  // reached.
+  UncondBrInst::Create(ElseBlock, CondBr->getIterator());
+  CondBr->eraseFromParent();
+
+  // Clone the remaining instructions of the guarded blocks into the direct
+  // block, where the direct call may use them. Clones that end up unused (for
+  // instance the load of the function pointer of a promoted virtual call) are
+  // removed again below.
+  ValueToValueMapTy VMap;
+  SmallVector<Instruction *, 4> Clones;
+  BasicBlock::iterator InsertPt = ThenBlock->begin();
+  for (BasicBlock *BB : Guard.Blocks) {
+    for (Instruction &I : *BB) {
+      if (I.isTerminator() || isa<PseudoProbeInst>(I))
+        continue;
+      Instruction *Clone = I.clone();
+      Clone->setName(I.getName());
+      Clone->insertBefore(InsertPt);
+      VMap[&I] = Clone;
+      Clones.push_back(Clone);
+    }
+  }
+  for (Instruction &I : *ThenBlock)
+    RemapInstruction(&I, VMap,
+                     RF_NoModuleLevelChanges | RF_IgnoreMissingLocals);
+
+  // The guarded blocks no longer dominate the merge block. Uses of their
+  // values reached through the direct path need the clone, and uses after the
+  // merge need a phi node.
+  for (BasicBlock *BB : Guard.Blocks) {
+    for (Instruction &I : *BB) {
+      if (I.isTerminator() || isa<PseudoProbeInst>(I))
+        continue;
+      PHINode *PN = nullptr;
+      for (Use &U : llvm::make_early_inc_range(I.uses())) {
+        auto *User = cast<Instruction>(U.getUser());
+        BasicBlock *UserBB = User->getParent();
+        if (auto *UserPN = dyn_cast<PHINode>(User))
+          UserBB = UserPN->getIncomingBlock(U);
+        if (GuardedBlocks.count(UserBB) || UserBB == ElseBlock)
+          continue;
+        if (UserBB == ThenBlock) {
+          U.set(VMap[&I]);
+          continue;
+        }
+        assert(MergeBlock && "use of a value defined before the call site "
+                             "that is not dominated by the call site's block");
+        if (!PN) {
+          PN = PHINode::Create(I.getType(), 2, I.getName() + ".icp",
+                               MergeBlock->begin());
+          PN->addIncoming(&I, ElseBlock);
+          PN->addIncoming(cast<Instruction>(VMap[&I]), ThenBlock);
+        }
+        U.set(PN);
+      }
+    }
+  }
+
+  // The clones have no side effects, so drop the ones nothing ended up using.
+  for (Instruction *Clone : reverse(Clones))
+    if (Clone->use_empty())
+      Clone->eraseFromParent();
+}
+
 // Predicate and clone the given call site using condition `CB.callee ==
 // Callee`. See the comment `versionCallSiteWithCond` for the transformation.
 CallBase &llvm::versionCallSite(CallBase &CB, Value *Callee,
@@ -572,6 +815,14 @@ CallBase &llvm::promoteCall(CallBase &CB, Function *Callee,
 
 CallBase &llvm::promoteCallWithIfThenElse(CallBase &CB, Function *Callee,
                                           MDNode *BranchWeights) {
+  // If the called value is guarded by a CFI type test that the callee is known
+  // to pass, the direct call can skip the check.
+  std::optional<TypeTestGuard> Guard;
+  if (HoistPromotionCondAboveTypeTest)
+    if (auto G = findTypeTestGuard(CB.getParent(), CB.getCalledOperand()))
+      if (canHoistPromotionCond(CB, *G) &&
+          passesTypeTest(Callee, G->TypeTest, CB.getDataLayout()))
+        Guard = G;
 
   // Version the indirect call site. If the called value is equal to the given
   // callee, 'NewInst' will be executed, otherwise the original call site will
@@ -579,7 +830,10 @@ CallBase &llvm::promoteCallWithIfThenElse(CallBase &CB, Function *Callee,
   CallBase &NewInst = versionCallSite(CB, Callee, BranchWeights);
 
   // Promote 'NewInst' so that it directly calls the desired function.
-  return promoteCall(NewInst, Callee);
+  CallBase &DirectCall = promoteCall(NewInst, Callee);
+  if (Guard)
+    hoistPromotionCondAboveTypeTest(*Guard, DirectCall, BranchWeights);
+  return DirectCall;
 }
 
 CallBase *llvm::promoteCallWithIfThenElse(CallBase &CB, Function &Callee,
@@ -671,6 +925,18 @@ CallBase &llvm::promoteCallWithVTableCmp(CallBase &CB, Instruction *VPtr,
                                          ArrayRef<Constant *> AddressPoints,
                                          MDNode *BranchWeights) {
   assert(!AddressPoints.empty() && "Caller should guarantee");
+  // If the vtable pointer is guarded by a CFI type test that all the address
+  // points are known to pass, the direct call can skip the check.
+  std::optional<TypeTestGuard> Guard;
+  if (HoistPromotionCondAboveTypeTest)
+    if (auto G = findTypeTestGuard(CB.getParent(), VPtr))
+      if (canHoistPromotionCond(CB, *G) &&
+          all_of(AddressPoints, [&](Constant *AddressPoint) {
+            return passesTypeTest(AddressPoint, G->TypeTest,
+                                  CB.getDataLayout());
+          }))
+        Guard = G;
+
   IRBuilder<> Builder(&CB);
   SmallVector<Value *, 2> ICmps;
   for (auto &AddressPoint : AddressPoints) {
@@ -691,7 +957,10 @@ CallBase &llvm::promoteCallWithVTableCmp(CallBase &CB, Instruction *VPtr,
   CallBase &NewInst = versionCallSiteWithCond(CB, Cond, BranchWeights);
 
   // Promote 'NewInst' so that it directly calls the desired function.
-  return promoteCall(NewInst, Callee);
+  CallBase &DirectCall = promoteCall(NewInst, Callee);
+  if (Guard)
+    hoistPromotionCondAboveTypeTest(*Guard, DirectCall, BranchWeights);
+  return DirectCall;
 }
 
 bool llvm::tryPromoteCall(CallBase &CB) {
