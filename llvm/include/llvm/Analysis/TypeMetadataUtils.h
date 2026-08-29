@@ -52,6 +52,19 @@ LLVM_ABI void findDevirtualizableCallsForTypeTest(
     SmallVectorImpl<CallInst *> &Assumes, const CallInst *CI,
     DominatorTree &DT);
 
+/// Given a call to the intrinsic \@llvm.type.test, find all virtual call sites
+/// that load their callee through the tested pointer and are dominated by the
+/// call, regardless of how its result is used. Unlike
+/// findDevirtualizableCallsForTypeTest, this does not require the result to
+/// be passed to \@llvm.assume: it also finds the virtual calls guarded by a
+/// -fsanitize=cfi-vcall check, which branches on the result. The type
+/// identifier describes the static type of the call sites found, but they may
+/// not be devirtualized based on the type test alone, since the check may be
+/// recoverable.
+LLVM_ABI void
+findVirtualCallsForTypeTest(SmallVectorImpl<DevirtCallSite> &VirtualCalls,
+                            const CallInst *CI, DominatorTree &DT);
+
 /// Given a call to the intrinsic \@llvm.type.checked.load, find all
 /// devirtualizable call sites based on the call and return them in DevirtCalls.
 LLVM_ABI void findDevirtualizableCallsForTypeCheckedLoad(

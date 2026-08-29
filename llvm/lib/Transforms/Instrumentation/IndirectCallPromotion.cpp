@@ -245,8 +245,12 @@ static bool isDestBBSuitableForSink(Instruction *Inst, BasicBlock *DestBB) {
   // 'BB' is used only by assert.
   [[maybe_unused]] BasicBlock *BB = Inst->getParent();
 
-  assert(BB != DestBB && BB->getTerminator()->getNumSuccessors() == 2 &&
-         DestBB->getUniquePredecessor() == BB &&
+  // `BB` either branches to `DestBB` and the direct call, or, when the
+  // comparison was evaluated before a CFI type test, falls through to
+  // `DestBB`.
+  assert(BB != DestBB && DestBB->getUniquePredecessor() == BB &&
+         (BB->getTerminator()->getNumSuccessors() == 2 ||
+          BB->getSingleSuccessor() == DestBB) &&
          "Guaranteed by ICP transformation");
 
   BasicBlock *UserBB = nullptr;
@@ -1017,6 +1021,8 @@ computeVirtualCallSiteTypeInfoMap(Module &M, ModuleAnalysisManager &MAM,
   // With ThinLTO and whole-program-devirtualization, llvm.type.test and
   // llvm.public.type.test are emitted, and llvm.public.type.test is either
   // refined to llvm.type.test or dropped before indirect-call-promotion pass.
+  // With -fsanitize=cfi-vcall, the type test guards a branch to a trap rather
+  // than feeding an llvm.assume.
   //
   // FIXME: For fullLTO with VFE, `llvm.type.checked.load intrinsic` is emitted.
   // Find out virtual calls by looking at users of llvm.type.checked.load in
@@ -1042,12 +1048,10 @@ computeVirtualCallSiteTypeInfoMap(Module &M, ModuleAnalysisManager &MAM,
     if (!CompatibleTypeId)
       continue;
 
-    // Find out all devirtualizable call sites given a llvm.type.test
-    // intrinsic call.
+    // Find out all virtual call sites given a llvm.type.test intrinsic call.
     SmallVector<DevirtCallSite, 1> DevirtCalls;
-    SmallVector<CallInst *, 1> Assumes;
     auto &DT = LookupDomTree(*CI->getFunction());
-    findDevirtualizableCallsForTypeTest(DevirtCalls, Assumes, CI, DT);
+    findVirtualCallsForTypeTest(DevirtCalls, CI, DT);
 
     for (auto &DevirtCall : DevirtCalls) {
       CallBase &CB = DevirtCall.CB;
