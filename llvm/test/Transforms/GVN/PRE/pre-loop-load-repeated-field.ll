@@ -12,9 +12,13 @@ define void @add_loop(ptr noundef nonnull align 8 dereferenceable(16) %f, ptr no
 ; CHECK-NEXT:    [[SZP:%.*]] = getelementptr inbounds i8, ptr [[F]], i64 8
 ; CHECK-NEXT:    [[CAPP:%.*]] = getelementptr inbounds i8, ptr [[F]], i64 12
 ; CHECK-NEXT:    [[WORD0:%.*]] = load i64, ptr [[F]], align 8
+; CHECK-NEXT:    [[SZLOAD_PRE1:%.*]] = load i32, ptr [[SZP]], align 8
+; CHECK-NEXT:    [[CAPLOAD_PRE4:%.*]] = load i32, ptr [[CAPP]], align 4
 ; CHECK-NEXT:    br label %[[HEADER:.*]]
 ; CHECK:       [[HEADER]]:
-; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_NEXT:%.*]], %[[LATCH:.*]] ]
+; CHECK-NEXT:    [[CAPLOAD:%.*]] = phi i32 [ [[CAPLOAD_PRE4]], %[[ENTRY]] ], [ [[CAPLOAD6:%.*]], %[[LATCH:.*]] ]
+; CHECK-NEXT:    [[SZLOAD:%.*]] = phi i32 [ [[SZLOAD_PRE1]], %[[ENTRY]] ], [ [[SZLOAD3:%.*]], %[[LATCH]] ]
+; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_NEXT:%.*]], %[[LATCH]] ]
 ; CHECK-NEXT:    [[WORD:%.*]] = phi i64 [ [[WORD0]], %[[ENTRY]] ], [ [[WORD_NEXT:%.*]], %[[LATCH]] ]
 ; CHECK-NEXT:    [[ELTP:%.*]] = getelementptr inbounds i32, ptr [[SRC]], i64 [[IV]]
 ; CHECK-NEXT:    [[V:%.*]] = load i32, ptr [[ELTP]], align 4
@@ -22,9 +26,7 @@ define void @add_loop(ptr noundef nonnull align 8 dereferenceable(16) %f, ptr no
 ; CHECK-NEXT:    [[IS_SOO:%.*]] = icmp eq i64 [[SOOBIT]], 0
 ; CHECK-NEXT:    [[WTRUNC:%.*]] = trunc i64 [[WORD]] to i32
 ; CHECK-NEXT:    [[SOOSZ:%.*]] = and i32 [[WTRUNC]], 3
-; CHECK-NEXT:    [[SZLOAD:%.*]] = load i32, ptr [[SZP]], align 8
 ; CHECK-NEXT:    [[SIZE:%.*]] = select i1 [[IS_SOO]], i32 [[SOOSZ]], i32 [[SZLOAD]]
-; CHECK-NEXT:    [[CAPLOAD:%.*]] = load i32, ptr [[CAPP]], align 4
 ; CHECK-NEXT:    [[CAP:%.*]] = select i1 [[IS_SOO]], i32 2, i32 [[CAPLOAD]]
 ; CHECK-NEXT:    [[HI:%.*]] = and i64 [[WORD]], -8
 ; CHECK-NEXT:    [[FULL:%.*]] = icmp eq i32 [[SIZE]], [[CAP]]
@@ -62,8 +64,12 @@ define void @add_loop(ptr noundef nonnull align 8 dereferenceable(16) %f, ptr no
 ; CHECK-NEXT:    [[SOOIDX:%.*]] = and i64 [[WORD]], 3
 ; CHECK-NEXT:    [[SOOSLOT:%.*]] = getelementptr inbounds i32, ptr [[SZP]], i64 [[SOOIDX]]
 ; CHECK-NEXT:    store i32 [[V]], ptr [[SOOSLOT]], align 4
+; CHECK-NEXT:    [[SZLOAD_PRE:%.*]] = load i32, ptr [[SZP]], align 8
+; CHECK-NEXT:    [[CAPLOAD_PRE:%.*]] = load i32, ptr [[CAPP]], align 4
 ; CHECK-NEXT:    br label %[[LATCH]]
 ; CHECK:       [[LATCH]]:
+; CHECK-NEXT:    [[CAPLOAD6]] = phi i32 [ [[CAP_RL]], %[[LONG]] ], [ [[CAPLOAD_PRE]], %[[SOO]] ]
+; CHECK-NEXT:    [[SZLOAD3]] = phi i32 [ [[NEW_SIZE]], %[[LONG]] ], [ [[SZLOAD_PRE]], %[[SOO]] ]
 ; CHECK-NEXT:    [[WORD_NEXT]] = phi i64 [ [[WORD_RL]], %[[LONG]] ], [ [[WORD_SOO]], %[[SOO]] ]
 ; CHECK-NEXT:    [[CAPA:%.*]] = phi i32 [ [[CAPLOAD]], %[[LONG]] ], [ 2, %[[SOO]] ]
 ; CHECK-NEXT:    [[CAPB:%.*]] = phi i32 [ [[CAP_RL]], %[[LONG]] ], [ 2, %[[SOO]] ]

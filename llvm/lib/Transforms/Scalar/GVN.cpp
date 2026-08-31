@@ -1965,6 +1965,51 @@ bool GVNPass::performLoadPRE(LoadInst *Load, AvailValInBlkVect &ValuesPerBlock,
   return true;
 }
 
+/// Return true if no instruction on any path from \p From (exclusive) to the
+/// end of \p To (inclusive) can free memory, so that memory known
+/// dereferenceable at \p From is still dereferenceable at the end of \p To.
+/// \p From must dominate \p To and both must be inside loop \p L.
+static bool noFreeOnPathTo(Instruction *From, BasicBlock *To, const Loop *L) {
+  constexpr unsigned MaxBlockScan = 16;
+  auto CannotFree = [](const Instruction &I) {
+    if (const auto *CB = dyn_cast<CallBase>(&I))
+      return CB->hasFnAttr(Attribute::NoFree);
+    // A non-call instruction cannot free memory.  However, an atomic access
+    // or a fence may synchronize with another thread which frees the object
+    // once this thread's accesses are ordered, so reject those.
+    if (I.isAtomic() || isa<FenceInst>(I))
+      return false;
+    return true;
+  };
+
+  BasicBlock *FromBB = From->getParent();
+  // Scan the tail of From's block.
+  for (Instruction &I :
+       make_range(std::next(From->getIterator()), FromBB->end()))
+    if (!CannotFree(I))
+      return false;
+
+  // Walk backwards from To, staying inside the loop, stopping at FromBB
+  // (which dominates To, so every path passes through it).
+  SmallVector<BasicBlock *, 8> Worklist({To});
+  SmallPtrSet<BasicBlock *, 8> Visited({FromBB, To});
+  while (!Worklist.empty()) {
+    BasicBlock *BB = Worklist.pop_back_val();
+    if (Visited.size() > MaxBlockScan)
+      return false;
+    for (Instruction &I : *BB)
+      if (!CannotFree(I))
+        return false;
+    for (BasicBlock *Pred : predecessors(BB)) {
+      if (!L->contains(Pred))
+        return false;
+      if (Visited.insert(Pred).second)
+        Worklist.push_back(Pred);
+    }
+  }
+  return true;
+}
+
 bool GVNPass::performLoopLoadPRE(LoadInst *Load,
                                  AvailValInBlkVect &ValuesPerBlock,
                                  UnavailBlkVect &UnavailableBlocks) {
@@ -2025,9 +2070,13 @@ bool GVNPass::performLoopLoadPRE(LoadInst *Load,
   if (!LoopBlock)
     return false;
 
-  // Make sure the memory at this pointer cannot be freed, therefore we can
-  // safely reload from it after clobber.
-  if (LoadPtr->canBeFreed())
+  // We reload after the clobber in LoopBlock, and also hoist into the
+  // preheader.  The preheader insertion is safe because the original load
+  // executes unconditionally in the header.  The LoopBlock insertion is safe
+  // if the memory cannot be freed at all, or if nothing between the original
+  // load (which executed in the header earlier in the same iteration) and the
+  // end of LoopBlock can free it.
+  if (LoadPtr->canBeFreed() && !noFreeOnPathTo(Load, LoopBlock, L))
     return false;
 
   // TODO: Support critical edge splitting if blocker has more than 1 successor.
