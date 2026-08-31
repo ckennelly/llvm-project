@@ -2965,6 +2965,26 @@ void AsmConstraintsInfo::HandleOutputConstraints() {
     if (!GCCReg.empty() && !PhysRegOutputs.insert(GCCReg).second)
       CGM.Error(S.getAsmLoc(), "multiple outputs to hard register: " + GCCReg);
 
+    // A "register or memory" constraint such as "+r,m" or "+rm" (simplified
+    // to "r|m" and "rm" respectively) is normally emitted by-reference below
+    // because it allows memory: the asm is handed the address of a stack
+    // slot, forcing a store/reload around the asm even when the backend
+    // would have chosen the register alternative. Instead, for non-vector
+    // scalars that fit in a general-purpose register, emit the operand
+    // by-value with the register alternative listed first and let the
+    // backend's multiple-alternative selection choose.
+    // FIXME: Handle memory-first spellings ("m,r"/"mr") and over-sized
+    // types once the backend can rewrite a chosen register operand back to
+    // memory (https://github.com/llvm/llvm-project/issues/20571).
+    QualType QTy = OutExpr->getType();
+    const bool PreferRegister =
+        (OutputConstraint == "r|m" || OutputConstraint == "rm") &&
+        CodeGenFunction::hasScalarEvaluationKind(QTy) &&
+        !QTy->isVectorType() &&
+        getContext().getTypeSize(QTy) <= getTarget().getRegisterWidth();
+    if (PreferRegister)
+      OutputConstraint = "r|m";
+
     OutputConstraints.push_back(OutputConstraint);
     LValue Dest = CGF.EmitLValue(OutExpr);
     if (!Constraints.empty())
@@ -2972,12 +2992,11 @@ void AsmConstraintsInfo::HandleOutputConstraints() {
 
     // If this is a register output, then make the inline asm return it
     // by-value.  If this is a memory result, return the value by-reference.
-    QualType QTy = OutExpr->getType();
     const bool IsScalarOrAggregate =
         CodeGenFunction::hasScalarEvaluationKind(QTy) ||
         CodeGenFunction::hasAggregateEvaluationKind(QTy);
 
-    if (!Info.allowsMemory() && IsScalarOrAggregate) {
+    if ((!Info.allowsMemory() || PreferRegister) && IsScalarOrAggregate) {
       Constraints += "=" + OutputConstraint;
       ResultRegQualTys.push_back(QTy);
       ResultRegDests.push_back(Dest);

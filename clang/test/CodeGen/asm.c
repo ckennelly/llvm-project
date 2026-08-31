@@ -319,7 +319,7 @@ void t32(int len) {
 
 void t33(int len) {
   // CHECK-LABEL: @t33
-  // CHECK:         call void asm sideeffect "", "=*%rm,=*rm,0,1,~{dirflag},~{fpsr},~{flags}"
+  // CHECK:         call i32 asm sideeffect "", "=*%rm,=r|m,0,1,~{dirflag},~{fpsr},~{flags}"
   __asm__ volatile ("" : "+%%rm" (len), "+rm" (len));
 }
 
