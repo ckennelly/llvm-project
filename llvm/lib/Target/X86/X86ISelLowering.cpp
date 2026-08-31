@@ -425,6 +425,14 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     // encoding.
     setOperationPromotedToType(ISD::CTLZ, MVT::i8, MVT::i32);
     setOperationPromotedToType(ISD::CTLZ_ZERO_POISON, MVT::i8, MVT::i32);
+    // Promote i16 as well: lzcntw needs a 0x66 prefix and only writes the low
+    // 16 bits of its destination, leaving a merge dependency on the register's
+    // stale upper bits (a true dependency, unlike the 32/64-bit false
+    // dependency BreakFalseDeps can clear). The i32 form avoids both, and the
+    // -16 adjustment usually folds into surrounding arithmetic. This mirrors
+    // the existing i16 CTTZ promotion.
+    setOperationPromotedToType(ISD::CTLZ, MVT::i16, MVT::i32);
+    setOperationPromotedToType(ISD::CTLZ_ZERO_POISON, MVT::i16, MVT::i32);
   } else {
     for (auto VT : {MVT::i8, MVT::i16, MVT::i32, MVT::i64}) {
       if (VT == MVT::i64 && !Subtarget.is64Bit())

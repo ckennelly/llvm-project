@@ -117,14 +117,22 @@ define i32 @remove_redundant_cmp_sgt_lzcnt_i32(i32 %0) {
 define i16 @remove_redundant_cmp_lzcnt_i16(i16 %0) {
 ; X64-LABEL: remove_redundant_cmp_lzcnt_i16:
 ; X64:       # %bb.0:
-; X64-NEXT:    lzcntw %di, %ax
+; X64-NEXT:    movzwl %di, %ecx
+; X64-NEXT:    lzcntl %ecx, %eax
+; X64-NEXT:    addl $-16, %eax
+; X64-NEXT:    cmpw $1, %cx
 ; X64-NEXT:    adcw $0, %ax
+; X64-NEXT:    # kill: def $ax killed $ax killed $eax
 ; X64-NEXT:    retq
 ;
 ; X86-LABEL: remove_redundant_cmp_lzcnt_i16:
 ; X86:       # %bb.0:
-; X86-NEXT:    lzcntw {{[0-9]+}}(%esp), %ax
+; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %ecx
+; X86-NEXT:    lzcntl %ecx, %eax
+; X86-NEXT:    addl $-16, %eax
+; X86-NEXT:    cmpl $1, %ecx
 ; X86-NEXT:    adcw $0, %ax
+; X86-NEXT:    # kill: def $ax killed $ax killed $eax
 ; X86-NEXT:    retl
   %2 = tail call i16 @llvm.ctlz.i16(i16 %0, i1 false)
   %3 = icmp eq i16 %0, 0
