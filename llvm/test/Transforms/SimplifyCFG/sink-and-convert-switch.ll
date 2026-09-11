@@ -145,3 +145,127 @@ return:
   %retval.0 = phi i64 [ %div6, %sw.bb5 ], [ %div4, %sw.bb3 ], [ %div2, %sw.bb1 ], [ %div, %sw.bb ]
   ret i64 %retval.0
 }
+
+; Both arms shift by a different constant. Sinking the shifts would replace the
+; immediates with a PHI of shift amounts and a variable shift, which is worse
+; than the two immediate shifts, so nothing is sunk.
+define i64 @dont_make_shift_variable(i64 %s, ptr %tbl) {
+; CHECK-LABEL: define i64 @dont_make_shift_variable(
+; CHECK-SAME: i64 [[S:%.*]], ptr [[TBL:%.*]]) {
+; CHECK-NEXT:  [[ENTRY:.*:]]
+; CHECK-NEXT:    [[SMALL:%.*]] = icmp ult i64 [[S]], 1025
+; CHECK-NEXT:    br i1 [[SMALL]], label %[[FAST:.*]], label %[[CHECK:.*]]
+; CHECK:       [[FAST]]:
+; CHECK-NEXT:    [[A:%.*]] = add i64 [[S]], 7
+; CHECK-NEXT:    [[IDX_FAST:%.*]] = lshr i64 [[A]], 3
+; CHECK-NEXT:    br label %[[LOOKUP:.*]]
+; CHECK:       [[CHECK]]:
+; CHECK-NEXT:    [[MEDIUM:%.*]] = icmp ult i64 [[S]], 262145
+; CHECK-NEXT:    br i1 [[MEDIUM]], label %[[SLOW:.*]], label %[[COMMON_RET:.*]]
+; CHECK:       [[SLOW]]:
+; CHECK-NEXT:    [[B:%.*]] = add i64 [[S]], 15487
+; CHECK-NEXT:    [[IDX_SLOW:%.*]] = lshr i64 [[B]], 7
+; CHECK-NEXT:    br label %[[LOOKUP]]
+; CHECK:       [[COMMON_RET]]:
+; CHECK-NEXT:    [[COMMON_RET_OP:%.*]] = phi i64 [ [[R:%.*]], %[[LOOKUP]] ], [ -1, %[[CHECK]] ]
+; CHECK-NEXT:    ret i64 [[COMMON_RET_OP]]
+; CHECK:       [[LOOKUP]]:
+; CHECK-NEXT:    [[IDX:%.*]] = phi i64 [ [[IDX_FAST]], %[[FAST]] ], [ [[IDX_SLOW]], %[[SLOW]] ]
+; CHECK-NEXT:    [[P:%.*]] = getelementptr i8, ptr [[TBL]], i64 [[IDX]]
+; CHECK-NEXT:    [[V:%.*]] = load i8, ptr [[P]], align 1
+; CHECK-NEXT:    [[R]] = zext i8 [[V]] to i64
+; CHECK-NEXT:    br label %[[COMMON_RET]]
+;
+entry:
+  %small = icmp ult i64 %s, 1025
+  br i1 %small, label %fast, label %check
+
+fast:
+  %a = add i64 %s, 7
+  %idx.fast = lshr i64 %a, 3
+  br label %lookup
+
+check:
+  %medium = icmp ult i64 %s, 262145
+  br i1 %medium, label %slow, label %fail
+
+slow:
+  %b = add i64 %s, 15487
+  %idx.slow = lshr i64 %b, 7
+  br label %lookup
+
+lookup:
+  %idx = phi i64 [ %idx.fast, %fast ], [ %idx.slow, %slow ]
+  %p = getelementptr i8, ptr %tbl, i64 %idx
+  %v = load i8, ptr %p, align 1
+  %r = zext i8 %v to i64
+  ret i64 %r
+
+fail:
+  ret i64 -1
+}
+
+; A diamond is if-converted instead, keeping the immediate shifts.
+define i64 @dont_make_shift_variable_diamond(i64 %x, i1 %c) {
+; CHECK-LABEL: define i64 @dont_make_shift_variable_diamond(
+; CHECK-SAME: i64 [[X:%.*]], i1 [[C:%.*]]) {
+; CHECK-NEXT:  [[ENTRY:.*:]]
+; CHECK-NEXT:    [[A:%.*]] = shl i64 [[X]], 3
+; CHECK-NEXT:    [[B:%.*]] = shl i64 [[X]], 7
+; CHECK-NEXT:    [[R:%.*]] = select i1 [[C]], i64 [[A]], i64 [[B]]
+; CHECK-NEXT:    ret i64 [[R]]
+;
+entry:
+  br i1 %c, label %if.then, label %if.else
+
+if.then:
+  %a = shl i64 %x, 3
+  br label %join
+
+if.else:
+  %b = shl i64 %x, 7
+  br label %join
+
+join:
+  %r = phi i64 [ %a, %if.then ], [ %b, %if.else ]
+  ret i64 %r
+}
+
+; With more than two predecessors the PHI of shift amounts can turn the switch
+; into a lookup, which is worth the variable shift, so the shifts are still sunk.
+define i64 @make_shift_variable_from_switch(i64 %x, i64 %i) {
+; CHECK-LABEL: define i64 @make_shift_variable_from_switch(
+; CHECK-SAME: i64 [[X:%.*]], i64 [[I:%.*]]) {
+; CHECK-NEXT:  [[RETURN:.*:]]
+; CHECK-NEXT:    [[SWITCH_TABLEIDX:%.*]] = sub nsw i64 [[I]], 1
+; CHECK-NEXT:    [[SWITCH_IDX_MULT:%.*]] = mul nsw i64 [[SWITCH_TABLEIDX]], 8
+; CHECK-NEXT:    [[SWITCH_OFFSET:%.*]] = add nsw i64 [[SWITCH_IDX_MULT]], 8
+; CHECK-NEXT:    [[RETVAL_0:%.*]] = shl i64 [[X]], [[SWITCH_OFFSET]]
+; CHECK-NEXT:    ret i64 [[RETVAL_0]]
+;
+entry:
+  switch i64 %i, label %sw.default [
+  i64 1, label %sw.bb
+  i64 2, label %sw.bb1
+  i64 3, label %sw.bb3
+  ]
+
+sw.bb:
+  %shl = shl i64 %x, 8
+  br label %return
+
+sw.bb1:
+  %shl2 = shl i64 %x, 16
+  br label %return
+
+sw.bb3:
+  %shl4 = shl i64 %x, 24
+  br label %return
+
+sw.default:
+  unreachable
+
+return:
+  %retval.0 = phi i64 [ %shl4, %sw.bb3 ], [ %shl2, %sw.bb1 ], [ %shl, %sw.bb ]
+  ret i64 %retval.0
+}
