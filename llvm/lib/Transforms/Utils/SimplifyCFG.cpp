@@ -2208,10 +2208,22 @@ bool SimplifyCFGOpt::hoistSuccIdenticalTerminatorToSwitchOrIf(
 
 // TODO: Refine this. This should avoid cases like turning constant memcpy sizes
 // into variables.
-static bool replacingOperandWithVariableIsCheap(const Instruction *I,
-                                                int OpIdx) {
+static bool replacingOperandWithVariableIsCheap(const Instruction *I, int OpIdx,
+                                                unsigned NumPreds) {
   // Divide/Remainder by constant is typically much cheaper than by variable.
   if (I->isIntDivRem())
+    return OpIdx != 1;
+  // Shift by constant is also cheaper than by variable (on x86 the variable
+  // form needs the amount in a fixed register and, without BMI2, is several
+  // uops), and a constant amount is something the rest of the optimizer can
+  // reason about while a PHI of amounts is not. When merging exactly two
+  // blocks nothing is gained in return: each block still has to materialize
+  // its amount for the PHI, so the code does not shrink, and if the blocks
+  // form a diamond that can be if-converted, the shifts are cheap enough to
+  // be speculated into a select anyway. With more predecessors the PHI of
+  // amounts may instead let a switch become a lookup table or an arithmetic
+  // mapping, which is worth a variable shift.
+  if (I->isShift() && NumPreds == 2)
     return OpIdx != 1;
   return !isa<IntrinsicInst>(I);
 }
@@ -2313,7 +2325,8 @@ static bool canSinkInstructions(
       auto CanReplaceOperand = [OI](const Instruction *I) {
         return canReplaceOperandWithVariable(I, OI);
       };
-      if ((isa<Constant>(Op) && !replacingOperandWithVariableIsCheap(I0, OI)) ||
+      if ((isa<Constant>(Op) &&
+           !replacingOperandWithVariableIsCheap(I0, OI, Insts.size())) ||
           !all_of(Insts, CanReplaceOperand))
         // We can't create a PHI from this operand.
         return false;

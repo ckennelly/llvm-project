@@ -152,20 +152,25 @@ return:
 define i64 @dont_make_shift_variable(i64 %s, ptr %tbl) {
 ; CHECK-LABEL: define i64 @dont_make_shift_variable(
 ; CHECK-SAME: i64 [[S:%.*]], ptr [[TBL:%.*]]) {
-; CHECK-NEXT:  [[ENTRY:.*]]:
+; CHECK-NEXT:  [[ENTRY:.*:]]
 ; CHECK-NEXT:    [[SMALL:%.*]] = icmp ult i64 [[S]], 1025
 ; CHECK-NEXT:    br i1 [[SMALL]], label %[[FAST:.*]], label %[[CHECK:.*]]
+; CHECK:       [[FAST]]:
+; CHECK-NEXT:    [[A:%.*]] = add i64 [[S]], 7
+; CHECK-NEXT:    [[IDX_FAST:%.*]] = lshr i64 [[A]], 3
+; CHECK-NEXT:    br label %[[LOOKUP:.*]]
 ; CHECK:       [[CHECK]]:
 ; CHECK-NEXT:    [[MEDIUM:%.*]] = icmp ult i64 [[S]], 262145
-; CHECK-NEXT:    br i1 [[MEDIUM]], label %[[FAST]], label %[[COMMON_RET:.*]]
+; CHECK-NEXT:    br i1 [[MEDIUM]], label %[[SLOW:.*]], label %[[COMMON_RET:.*]]
+; CHECK:       [[SLOW]]:
+; CHECK-NEXT:    [[B:%.*]] = add i64 [[S]], 15487
+; CHECK-NEXT:    [[IDX_SLOW:%.*]] = lshr i64 [[B]], 7
+; CHECK-NEXT:    br label %[[LOOKUP]]
 ; CHECK:       [[COMMON_RET]]:
-; CHECK-NEXT:    [[COMMON_RET_OP:%.*]] = phi i64 [ [[R:%.*]], %[[FAST]] ], [ -1, %[[CHECK]] ]
+; CHECK-NEXT:    [[COMMON_RET_OP:%.*]] = phi i64 [ [[R:%.*]], %[[LOOKUP]] ], [ -1, %[[CHECK]] ]
 ; CHECK-NEXT:    ret i64 [[COMMON_RET_OP]]
-; CHECK:       [[FAST]]:
-; CHECK-NEXT:    [[DOTSINK1:%.*]] = phi i64 [ 7, %[[ENTRY]] ], [ 15487, %[[CHECK]] ]
-; CHECK-NEXT:    [[DOTSINK:%.*]] = phi i64 [ 3, %[[ENTRY]] ], [ 7, %[[CHECK]] ]
-; CHECK-NEXT:    [[B:%.*]] = add i64 [[S]], [[DOTSINK1]]
-; CHECK-NEXT:    [[IDX:%.*]] = lshr i64 [[B]], [[DOTSINK]]
+; CHECK:       [[LOOKUP]]:
+; CHECK-NEXT:    [[IDX:%.*]] = phi i64 [ [[IDX_FAST]], %[[FAST]] ], [ [[IDX_SLOW]], %[[SLOW]] ]
 ; CHECK-NEXT:    [[P:%.*]] = getelementptr i8, ptr [[TBL]], i64 [[IDX]]
 ; CHECK-NEXT:    [[V:%.*]] = load i8, ptr [[P]], align 1
 ; CHECK-NEXT:    [[R]] = zext i8 [[V]] to i64
@@ -205,8 +210,9 @@ define i64 @dont_make_shift_variable_diamond(i64 %x, i1 %c) {
 ; CHECK-LABEL: define i64 @dont_make_shift_variable_diamond(
 ; CHECK-SAME: i64 [[X:%.*]], i1 [[C:%.*]]) {
 ; CHECK-NEXT:  [[ENTRY:.*:]]
-; CHECK-NEXT:    [[DOT:%.*]] = select i1 [[C]], i64 3, i64 7
-; CHECK-NEXT:    [[R:%.*]] = shl i64 [[X]], [[DOT]]
+; CHECK-NEXT:    [[A:%.*]] = shl i64 [[X]], 3
+; CHECK-NEXT:    [[B:%.*]] = shl i64 [[X]], 7
+; CHECK-NEXT:    [[R:%.*]] = select i1 [[C]], i64 [[A]], i64 [[B]]
 ; CHECK-NEXT:    ret i64 [[R]]
 ;
 entry:
