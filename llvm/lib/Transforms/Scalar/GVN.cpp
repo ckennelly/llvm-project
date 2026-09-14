@@ -100,6 +100,8 @@ STATISTIC(NumPRELoad, "Number of loads PRE'd");
 STATISTIC(NumPRELoopLoad, "Number of loop loads PRE'd");
 STATISTIC(NumPRELoadMoved2CEPred,
           "Number of loads moved to predecessor of a critical edge in PRE");
+STATISTIC(NumPRELoadDiamond,
+          "Number of loads PRE'd by hoisting above a transparent diamond");
 
 STATISTIC(IsValueFullyAvailableInBlockNumSpeculationsMax,
           "Number of blocks speculated as available in "
@@ -113,6 +115,11 @@ static cl::opt<bool> GVNEnableScalarPRE("enable-scalar-pre", cl::init(true),
 static cl::opt<bool> GVNEnableLoadPRE("enable-load-pre", cl::init(true));
 static cl::opt<bool> GVNEnableLoadInLoopPRE("enable-load-in-loop-pre",
                                             cl::init(true));
+static cl::opt<bool>
+    GVNEnableLoadPREDiamond("enable-load-pre-diamond", cl::init(true),
+                            cl::Hidden,
+                            cl::desc("Allow load PRE to hoist a load above a "
+                                     "transparent diamond in the CFG"));
 static cl::opt<bool>
 GVNEnableSplitBackedgeInLoadPRE("enable-split-backedge-in-load-pre",
                                 cl::init(false));
@@ -1623,6 +1630,52 @@ LoadInst *GVNPass::findLoadToHoistIntoPred(BasicBlock *Pred, BasicBlock *LoadBB,
   return nullptr;
 }
 
+/// LoadBB has several predecessors, \p UnavailablePreds, in which the loaded
+/// value is not available. Check whether they form a diamond
+///
+///         Head
+///        /  |  \
+///       R1  R2  |      Ri: unique predecessor Head, unique successor LoadBB
+///        \  |  /
+///        LoadBB
+///
+/// whose blocks contain nothing that may clobber the load (none of them is in
+/// \p Blockers), and every successor of Head is either LoadBB or one of the
+/// unavailable predecessors. Along all of these edges the value reaching
+/// LoadBB is the value at the end of Head, and every path leaving Head reaches
+/// LoadBB, so the load can be made available in Head instead of in each of the
+/// predecessors. Returns Head, or null if the predecessors are not shaped like
+/// this.
+static BasicBlock *
+findTransparentDiamondHead(BasicBlock *LoadBB,
+                           ArrayRef<BasicBlock *> UnavailablePreds,
+                           const SmallPtrSetImpl<BasicBlock *> &Blockers) {
+  BasicBlock *Head = nullptr;
+  for (BasicBlock *Pred : UnavailablePreds) {
+    // A predecessor with a unique successor is one of the Ri and its unique
+    // predecessor is the candidate head; otherwise it must be the head itself.
+    BasicBlock *Candidate =
+        Pred->getUniqueSuccessor() ? Pred->getUniquePredecessor() : Pred;
+    if (!Candidate || (Head && Head != Candidate))
+      return nullptr;
+    Head = Candidate;
+  }
+  if (!Head || Head == LoadBB || Blockers.contains(Head))
+    return nullptr;
+
+  SmallPtrSet<BasicBlock *, 4> UnavailablePredSet(llvm::from_range,
+                                                  UnavailablePreds);
+  for (BasicBlock *Succ : successors(Head)) {
+    if (Succ == LoadBB)
+      continue;
+    if (!UnavailablePredSet.contains(Succ) || Blockers.contains(Succ) ||
+        Succ->getUniquePredecessor() != Head ||
+        Succ->getUniqueSuccessor() != LoadBB)
+      return nullptr;
+  }
+  return Head;
+}
+
 void GVNPass::eliminatePartiallyRedundantLoad(
     LoadInst *Load, AvailValInBlkVect &ValuesPerBlock,
     MapVector<BasicBlock *, Value *> &AvailableLoads,
@@ -1861,6 +1914,66 @@ bool GVNPass::performLoadPRE(LoadInst *Load, AvailValInBlkVect &ValuesPerBlock,
          "Fully available value should already be eliminated!");
   (void)NumUnavailablePreds;
 
+  // If we would need to insert the load in multiple predecessors, see whether
+  // those predecessors form a transparent diamond (see
+  // findTransparentDiamondHead). If so, the load can be hoisted above the
+  // diamond's head instead, where it may again be a single insertion, e.g.
+  //
+  //   head:  br %c, label %then, label %merge   ; value unavailable in one
+  //   then:  <stores that do not alias>         ; predecessor of %head
+  //   merge: %v = load ...                      ; only, so one load suffices
+  //
+  // This is a form of the "restructure the CFG to make a common predecessor"
+  // idea that needs no restructuring. The load's address must already be
+  // available at the head: the diamond has several paths, so it cannot be
+  // PHI-translated through.
+  BasicBlock *DiamondHead = nullptr;
+  if (NumInsertPreds > 1 && GVNEnableLoadPREDiamond) {
+    SmallVector<BasicBlock *, 4> UnavailablePreds;
+    for (const auto &PL : PredLoads)
+      UnavailablePreds.push_back(PL.first);
+    append_range(UnavailablePreds, CriticalEdgePredSplit);
+    for (const auto &CEP : CriticalEdgePredAndLoad)
+      UnavailablePreds.push_back(CEP.first);
+
+    BasicBlock *Head =
+        findTransparentDiamondHead(LoadBB, UnavailablePreds, Blockers);
+    if (!Head)
+      return false;
+    // Hoisting above the head of a diamond that closes a loop would move the
+    // load across the backedge; leave that to loop load PRE.
+    if (DT->dominates(LoadBB, Head))
+      return false;
+    if (auto *PtrInst = dyn_cast<Instruction>(Load->getPointerOperand()))
+      if (!DT->dominates(PtrInst, Head))
+        return false;
+    // The diamond is now between the insertion points and the load; as for
+    // the single-predecessor chain, implicit control flow in it means the
+    // hoisted load may execute where the original did not.
+    MustEnsureSafetyOfSpeculativeExecution =
+        MustEnsureSafetyOfSpeculativeExecution || ICF->hasICF(Head) ||
+        any_of(UnavailablePreds,
+               [&](BasicBlock *BB) { return BB != Head && ICF->hasICF(BB); });
+
+    TmpBB = Head;
+    if (!WalkUpSinglePredecessors(TmpBB))
+      return false;
+    DiamondHead = Head;
+    LoadBB = TmpBB;
+    LLVM_DEBUG(dbgs() << "LOAD PRE HOISTING ABOVE DIAMOND HEAD '"
+                      << Head->getName() << "' TO '" << LoadBB->getName()
+                      << "': " << *Load << '\n');
+
+    PredLoads.clear();
+    CriticalEdgePredSplit.clear();
+    CriticalEdgePredAndLoad.clear();
+    if (!ClassifyPredecessors())
+      return false;
+    NumInsertPreds = PredLoads.size() + CriticalEdgePredSplit.size();
+    assert(NumInsertPreds + CriticalEdgePredAndLoad.size() != 0 &&
+           "Value fully available above the diamond, but not below it?");
+  }
+
   // If we need to insert new load in multiple predecessors, reject it.
   // FIXME: If we could restructure the CFG, we could make a common pred with
   // all the preds that don't have an available Load and insert a new load into
@@ -1912,8 +2025,10 @@ bool GVNPass::performLoadPRE(LoadInst *Load, AvailValInBlkVect &ValuesPerBlock,
     // If all preds have a single successor, then we know it is safe to insert
     // the load on the pred (?!?), so we can insert code to materialize the
     // pointer if it is not available.
+    // When hoisting above a diamond, the address is known to dominate its
+    // head, so translation only has to start there.
     Value *LoadPtr = Load->getPointerOperand();
-    BasicBlock *Cur = Load->getParent();
+    BasicBlock *Cur = DiamondHead ? DiamondHead : Load->getParent();
     while (Cur != LoadBB) {
       PHITransAddr Address(LoadPtr, DL, AC);
       LoadPtr = Address.translateWithInsertion(Cur, Cur->getSinglePredecessor(),
@@ -1981,6 +2096,8 @@ bool GVNPass::performLoadPRE(LoadInst *Load, AvailValInBlkVect &ValuesPerBlock,
   eliminatePartiallyRedundantLoad(Load, ValuesPerBlock, PredLoads,
                                   &CriticalEdgePredAndLoad);
   ++NumPRELoad;
+  if (DiamondHead)
+    ++NumPRELoadDiamond;
   return true;
 }
 

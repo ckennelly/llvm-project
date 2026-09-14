@@ -118,13 +118,13 @@ merge:
 }
 
 
-; TODO: at the moment, our anticipation check does not handle anything
-; other than straight-line unconditional fallthrough.  This particular
-; case could be solved through either a backwards anticipation walk or
-; use of the "safe to speculate" status (if we annotate the param)
+; The load is unavailable in both %bb1 and %bb2, which form a transparent
+; diamond below %header; the anticipation check sees through the diamond and
+; the load is hoisted out of the loop.
 define i32 @test3(i1 %cnd, ptr %p) {
 ; CHECK-LABEL: @test3(
 ; CHECK-NEXT:  entry:
+; CHECK-NEXT:    [[V1:%.*]] = load i32, ptr [[P:%.*]], align 4
 ; CHECK-NEXT:    br label [[HEADER:%.*]]
 ; CHECK:       header:
 ; CHECK-NEXT:    br i1 [[CND:%.*]], label [[BB1:%.*]], label [[BB2:%.*]]
@@ -133,7 +133,6 @@ define i32 @test3(i1 %cnd, ptr %p) {
 ; CHECK:       bb2:
 ; CHECK-NEXT:    br label [[MERGE]]
 ; CHECK:       merge:
-; CHECK-NEXT:    [[V1:%.*]] = load i32, ptr [[P:%.*]], align 4
 ; CHECK-NEXT:    call void @hold(i32 [[V1]])
 ; CHECK-NEXT:    br label [[HEADER]]
 ;
