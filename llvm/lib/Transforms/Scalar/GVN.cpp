@@ -1747,25 +1747,35 @@ bool GVNPass::performLoadPRE(LoadInst *Load, AvailValInBlkVect &ValuesPerBlock,
   bool MustEnsureSafetyOfSpeculativeExecution =
       ICF->isDominatedByICFIFromSameBlock(Load);
 
-  while (TmpBB->getSinglePredecessor()) {
-    TmpBB = TmpBB->getSinglePredecessor();
-    if (TmpBB == LoadBB) // Infinite (unreachable) loop.
-      return false;
-    if (Blockers.count(TmpBB))
-      return false;
+  // Walk up the chain of single-predecessor blocks starting at TmpBB, as far
+  // as the load can be hoisted. Returns false if the walk runs into a block
+  // the load cannot be moved through.
+  auto WalkUpSinglePredecessors = [&](BasicBlock *&TmpBB) {
+    BasicBlock *StartBB = TmpBB;
+    while (TmpBB->getSinglePredecessor()) {
+      TmpBB = TmpBB->getSinglePredecessor();
+      if (TmpBB == StartBB) // Infinite (unreachable) loop.
+        return false;
+      if (Blockers.count(TmpBB))
+        return false;
 
-    // If any of these blocks has more than one successor (i.e. if the edge we
-    // just traversed was critical), then there are other paths through this
-    // block along which the load may not be anticipated.  Hoisting the load
-    // above this block would be adding the load to execution paths along
-    // which it was not previously executed.
-    if (TmpBB->getTerminator()->getNumSuccessors() != 1)
-      return false;
+      // If any of these blocks has more than one successor (i.e. if the edge
+      // we just traversed was critical), then there are other paths through
+      // this block along which the load may not be anticipated.  Hoisting the
+      // load above this block would be adding the load to execution paths
+      // along which it was not previously executed.
+      if (TmpBB->getTerminator()->getNumSuccessors() != 1)
+        return false;
 
-    // Check that there is no implicit control flow in a block above.
-    MustEnsureSafetyOfSpeculativeExecution =
-        MustEnsureSafetyOfSpeculativeExecution || ICF->hasICF(TmpBB);
-  }
+      // Check that there is no implicit control flow in a block above.
+      MustEnsureSafetyOfSpeculativeExecution =
+          MustEnsureSafetyOfSpeculativeExecution || ICF->hasICF(TmpBB);
+    }
+    return true;
+  };
+
+  if (!WalkUpSinglePredecessors(TmpBB))
+    return false;
 
   assert(TmpBB);
   LoadBB = TmpBB;
@@ -1785,54 +1795,63 @@ bool GVNPass::performLoadPRE(LoadInst *Load, AvailValInBlkVect &ValuesPerBlock,
   // contains a load can be moved to Pred. This data structure maps the Pred to
   // the movable load.
   MapVector<BasicBlock *, LoadInst *> CriticalEdgePredAndLoad;
-  for (BasicBlock *Pred : predecessors(LoadBB)) {
-    // If any predecessor block is an EH pad that does not allow non-PHI
-    // instructions before the terminator, we can't PRE the load.
-    if (Pred->getTerminator()->isEHPad()) {
-      LLVM_DEBUG(
-          dbgs() << "COULD NOT PRE LOAD BECAUSE OF AN EH PAD PREDECESSOR '"
-                 << Pred->getName() << "': " << *Load << '\n');
-      return false;
-    }
-
-    if (isValueFullyAvailableInBlock(Pred, FullyAvailableBlocks)) {
-      continue;
-    }
-
-    if (Pred->getTerminator()->getNumSuccessors() != 1) {
-      if (isa<IndirectBrInst>(Pred->getTerminator())) {
+  // Sort the predecessors of LoadBB into the containers above. Returns false
+  // if one of them rules out PRE.
+  auto ClassifyPredecessors = [&]() {
+    for (BasicBlock *Pred : predecessors(LoadBB)) {
+      // If any predecessor block is an EH pad that does not allow non-PHI
+      // instructions before the terminator, we can't PRE the load.
+      if (Pred->getTerminator()->isEHPad()) {
         LLVM_DEBUG(
-            dbgs() << "COULD NOT PRE LOAD BECAUSE OF INDBR CRITICAL EDGE '"
+            dbgs() << "COULD NOT PRE LOAD BECAUSE OF AN EH PAD PREDECESSOR '"
                    << Pred->getName() << "': " << *Load << '\n');
         return false;
       }
 
-      if (LoadBB->isEHPad()) {
-        LLVM_DEBUG(
-            dbgs() << "COULD NOT PRE LOAD BECAUSE OF AN EH PAD CRITICAL EDGE '"
-                   << Pred->getName() << "': " << *Load << '\n');
-        return false;
+      if (isValueFullyAvailableInBlock(Pred, FullyAvailableBlocks)) {
+        continue;
       }
 
-      // Do not split backedge as it will break the canonical loop form.
-      if (!isLoadPRESplitBackedgeEnabled())
-        if (DT->dominates(LoadBB, Pred)) {
+      if (Pred->getTerminator()->getNumSuccessors() != 1) {
+        if (isa<IndirectBrInst>(Pred->getTerminator())) {
+          LLVM_DEBUG(dbgs()
+                     << "COULD NOT PRE LOAD BECAUSE OF INDBR CRITICAL EDGE '"
+                     << Pred->getName() << "': " << *Load << '\n');
+          return false;
+        }
+
+        if (LoadBB->isEHPad()) {
           LLVM_DEBUG(
               dbgs()
-              << "COULD NOT PRE LOAD BECAUSE OF A BACKEDGE CRITICAL EDGE '"
+              << "COULD NOT PRE LOAD BECAUSE OF AN EH PAD CRITICAL EDGE '"
               << Pred->getName() << "': " << *Load << '\n');
           return false;
         }
 
-      if (LoadInst *LI = findLoadToHoistIntoPred(Pred, LoadBB, Load))
-        CriticalEdgePredAndLoad[Pred] = LI;
-      else
-        CriticalEdgePredSplit.push_back(Pred);
-    } else {
-      // Only add the predecessors that will not be split for now.
-      PredLoads[Pred] = nullptr;
+        // Do not split backedge as it will break the canonical loop form.
+        if (!isLoadPRESplitBackedgeEnabled())
+          if (DT->dominates(LoadBB, Pred)) {
+            LLVM_DEBUG(
+                dbgs()
+                << "COULD NOT PRE LOAD BECAUSE OF A BACKEDGE CRITICAL EDGE '"
+                << Pred->getName() << "': " << *Load << '\n');
+            return false;
+          }
+
+        if (LoadInst *LI = findLoadToHoistIntoPred(Pred, LoadBB, Load))
+          CriticalEdgePredAndLoad[Pred] = LI;
+        else
+          CriticalEdgePredSplit.push_back(Pred);
+      } else {
+        // Only add the predecessors that will not be split for now.
+        PredLoads[Pred] = nullptr;
+      }
     }
-  }
+    return true;
+  };
+
+  if (!ClassifyPredecessors())
+    return false;
 
   // Decide whether PRE is profitable for this load.
   unsigned NumInsertPreds = PredLoads.size() + CriticalEdgePredSplit.size();
