@@ -59,6 +59,12 @@ Improvements and New Features
 
 - ``basic_filebuf`` now supports files larger than 2GB on 32-bit AIX and 32-bit glibc targets.
 
+- Assigning a value to a ``basic_string`` now allocates a buffer sized for the value assigned instead of
+  applying the amortized growth factor, which left the string over-allocated by up to 2x. For example,
+  ``str = std::string(24, 'a')`` on a default constructed ``str`` now results in the same capacity as
+  ``std::string str(24, 'a')``. Growing operations like ``append`` are unaffected and keep growing
+  geometrically.
+
 Deprecations and Removals
 -------------------------
 

@@ -2370,6 +2370,29 @@ private:
       size_type __n_add,
       const value_type* __p_new_stuff);
 
+  // Allocates a buffer whose capacity is exactly large enough to hold the __n characters of the value being
+  // assigned, for __reset_to_assigned_buffer to install as the value of the string.
+  //
+  // Unlike __grow_by_and_replace, this doesn't apply the amortized growth factor. An assignment replaces the
+  // entire value of the string instead of extending it, so it isn't a step of an incremental growth sequence:
+  // growing geometrically for it leaves the string holding memory it is unlikely to ever use.
+  //
+  // The caller writes exactly __n characters into the returned buffer and hands it to __reset_to_assigned_buffer,
+  // which writes the null terminator. The buffer the string holds is only released there, so the characters may be
+  // read from it.
+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 __long __allocate_assign_buffer(size_type __n) {
+    if (__n > max_size())
+      __throw_length_error();
+    return __allocate_long_buffer(__alloc_, __n);
+  }
+
+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void __reset_to_assigned_buffer(__long __buffer, size_type __n) {
+    traits_type::assign(__buffer.__data_[__n], value_type());
+    __annotate_delete();
+    auto __guard = std::__make_scope_guard(__annotate_new_size(*this));
+    __reset_internal_buffer(__buffer);
+  }
+
   // __assign_no_alias is invoked for assignment operations where we
   // have proof that the input does not alias the current instance.
   // For example, operator=(basic_string) performs a 'self' check.
@@ -2729,10 +2752,11 @@ template <class _CharT, class _Traits, class _Allocator>
 template <bool __is_short>
 _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_NOINLINE basic_string<_CharT, _Traits, _Allocator>&
 basic_string<_CharT, _Traits, _Allocator>::__assign_no_alias(const value_type* __s, size_type __n) {
-  const auto __cap  = __is_short ? static_cast<size_type>(__min_cap) : __get_long_cap();
-  const auto __size = __is_short ? __get_short_size() : __get_long_size();
+  const auto __cap = __is_short ? static_cast<size_type>(__min_cap) : __get_long_cap();
   if (__n >= __cap) {
-    __grow_by_and_replace(__cap - 1, __n - __cap + 1, __size, 0, __size, __n, __s);
+    __long __buffer = __allocate_assign_buffer(__n);
+    traits_type::copy(std::__to_address(__buffer.__data_), __s, __n);
+    __reset_to_assigned_buffer(__buffer, __n);
     return *this;
   }
 
@@ -2763,7 +2787,9 @@ basic_string<_CharT, _Traits, _Allocator>::__assign_external(const value_type* _
     traits_type::move(__p, __s, __n);
     return __null_terminate_at(__p, __n);
   } else {
-    __grow_by_and_replace(__cap, __n - __cap, __size, 0, __size, __n, __s);
+    __long __buffer = __allocate_assign_buffer(__n);
+    traits_type::copy(std::__to_address(__buffer.__data_), __s, __n);
+    __reset_to_assigned_buffer(__buffer, __n);
     return *this;
   }
 }
@@ -2788,9 +2814,13 @@ basic_string<_CharT, _Traits, _Allocator>::assign(size_type __n, value_type __c)
   size_type __cap      = capacity();
   size_type __old_size = size();
   if (__cap < __n) {
-    __grow_by_without_replace(__cap, __n - __cap, __old_size, 0, __old_size);
-    __annotate_increase(__n);
-  } else if (__n > __old_size)
+    __long __buffer = __allocate_assign_buffer(__n);
+    traits_type::assign(std::__to_address(__buffer.__data_), __n, __c);
+    __reset_to_assigned_buffer(__buffer, __n);
+    return *this;
+  }
+
+  if (__n > __old_size)
     __annotate_increase(__n - __old_size);
   value_type* __p = __data();
   traits_type::assign(__p, __n, __c);
@@ -2921,13 +2951,9 @@ basic_string<_CharT, _Traits, _Allocator>::__assign_trivial(_Iterator __first, _
     // string holds is released. That covers both a subset of the value, which is longer than the capacity when it
     // includes the null terminator of a full buffer, and the exotic case where the range is the byte representation
     // of the string object itself, which the long representation is written over.
-    __long __buffer = __allocate_long_buffer(__alloc_, __n, __get_amortized_growth_capacity(__n));
-    auto __end      = __copy_non_overlapping_range(__first, __last, std::__to_address(__buffer.__data_));
-    traits_type::assign(*__end, value_type());
-
-    __annotate_delete();
-    auto __guard = std::__make_scope_guard(__annotate_new_size(*this));
-    __reset_internal_buffer(__buffer);
+    __long __buffer = __allocate_assign_buffer(__n);
+    __copy_non_overlapping_range(__first, __last, std::__to_address(__buffer.__data_));
+    __reset_to_assigned_buffer(__buffer, __n);
     return;
   }
 
