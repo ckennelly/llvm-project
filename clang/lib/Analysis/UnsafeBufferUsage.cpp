@@ -1749,18 +1749,33 @@ public:
                       const UnsafeBufferUsageHandler *Handler,
                       MatchResult &Result) {
     const auto *ASE = dyn_cast<ArraySubscriptExpr>(S);
-    if (!ASE)
-      return false;
+    bool IgnoreStaticSizedArrays = false;
+    if (ASE) {
+      IgnoreStaticSizedArrays =
+          Handler->ignoreUnsafeBufferInStaticSizedArray(S->getBeginLoc());
+    } else {
+      // `&a[i]` on an array of known size: -fsanitize=array-bounds only checks
+      // `i <= N` here, since forming the one-past-the-end pointer is valid, so
+      // the static-sized-array opt-out does not cover it.  Report the subscript
+      // as if the opt-out were off, i.e. unless it is statically in bounds,
+      // consistent with how the opt-out handles `a + i`.
+      const auto *UO = dyn_cast<UnaryOperator>(S);
+      if (!UO || UO->getOpcode() != UO_AddrOf)
+        return false;
+      ASE = dyn_cast<ArraySubscriptExpr>(UO->getSubExpr()->IgnoreParens());
+      // Only step in for a subscript the opt-out would otherwise silence; any
+      // other subscript is reported when the visitor reaches it.
+      if (!ASE || !isSubscriptOnSizedArray(*ASE, Ctx) ||
+          !Handler->ignoreUnsafeBufferInStaticSizedArray(ASE->getBeginLoc()))
+        return false;
+    }
     const auto *const Base = ASE->getBase()->IgnoreParenImpCasts();
     if (!hasPointerType(*Base) && !hasArrayType(*Base))
       return false;
     const auto *Idx = dyn_cast<IntegerLiteral>(ASE->getIdx());
     bool IsSafeIndex = (Idx && Idx->getValue().isZero()) ||
                        isa<ArrayInitIndexExpr>(ASE->getIdx());
-    if (IsSafeIndex ||
-        isSafeArraySubscript(
-            *ASE, Ctx,
-            Handler->ignoreUnsafeBufferInStaticSizedArray(S->getBeginLoc())))
+    if (IsSafeIndex || isSafeArraySubscript(*ASE, Ctx, IgnoreStaticSizedArrays))
       return false;
     Result.addNode(ArraySubscrTag, DynTypedNode::create(*ASE));
     return true;

@@ -481,8 +481,10 @@ features cannot lower the translation-unit ABI level;
 
 - `-Wno-unsafe-buffer-usage-in-static-sized-array` no longer suppresses warnings
   for subscripts on a trailing array member that `-fstrict-flex-arrays` treats
-  as a flexible array member, since `-fsanitize=array-bounds` does not check
-  those accesses.
+  as a flexible array member, or for taking the address of a subscript
+  (`&array[idx]`) unless the index is a constant within the array bounds, since
+  `-fsanitize=array-bounds` does not check the former and allows the
+  one-past-the-end index for the latter.
 
 - `-Wc++98-compat` now diagnoses explicit conversion functions in C++20 and
   later, matching the behavior in C++11 through C++17. (#GH161689)

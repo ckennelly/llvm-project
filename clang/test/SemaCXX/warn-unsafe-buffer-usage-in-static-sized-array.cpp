@@ -176,3 +176,14 @@ void safe_pointer_arithmetic() {
   int *p3 = arr + 9;
   int *p4 = 5 + arr;
 }
+
+void safe_address_of_subscript(unsigned idx) {
+  int arr[10];
+
+  int *p1 = &arr[0];
+  int *p2 = &arr[5];
+  int *p3 = &arr[9];
+  int *p4 = &arr[idx & 7];
+  int *p5 = &arr[idx % 10];
+  int *p6 = &(arr[9]);
+}

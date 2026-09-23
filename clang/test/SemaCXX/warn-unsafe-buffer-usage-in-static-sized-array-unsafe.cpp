@@ -14,6 +14,25 @@ void unsafe_pointer_arithmetic(int idx) {
   int *u4 = buffer + idx; // expected-note {{used in pointer arithmetic here}}
 }
 
+// -fsanitize=array-bounds allows the one-past-the-end index when only the
+// address is taken, so these are as unsafe as `buffer + idx`.
+void unsafe_address_of_subscript(int idx) {
+  int buffer[10]; // expected-warning {{'buffer' is an unsafe buffer that does not perform bounds checks}}
+
+  int *u1 = &buffer[10];    // expected-note {{used in buffer access here}}
+  int *u2 = &buffer[idx];   // expected-note {{used in buffer access here}}
+  int *u3 = &(buffer[idx]); // expected-note {{used in buffer access here}}
+}
+
+void unsafe_address_of_subscript_2d(int idx) {
+  int matrix[4][4];
+
+  // The inner subscript is checked as an access; only the outer one can be
+  // one past the end.  Its base is not a variable, so the warning is not
+  // grouped under `matrix`.
+  int *u1 = &matrix[idx][idx]; // expected-warning {{unsafe buffer access}}
+}
+
 struct Trailing {
   int len;
   int buffer[10];
