@@ -14,6 +14,16 @@ void foo(unsigned idx) {
 int global_buffer[10];
 void foo2(unsigned idx) { global_buffer[idx] = 0; }
 
+// -fsanitize=array-bounds checks variable-length arrays too.
+void vla(unsigned n, unsigned idx) {
+  int buffer[n];
+  buffer[idx] = 0;
+  buffer[0] = buffer[n - 1];
+
+  int matrix[n][4];
+  matrix[idx][idx & 3] = 0;
+}
+
 struct Foo {
   int member_buffer[10];
   int x;

@@ -43,3 +43,10 @@ struct Trailing {
 void unsafe_trailing_member(Trailing *t, int idx) {
   t->buffer[idx] = 0; // expected-warning {{unsafe buffer access}}
 }
+
+void unsafe_vla_pointer(unsigned n, int idx) {
+  int buffer[n]; // expected-warning {{'buffer' is an unsafe buffer that does not perform bounds checks}}
+
+  int *u1 = buffer + idx;  // expected-note {{used in pointer arithmetic here}}
+  int *u2 = &buffer[idx];  // expected-note {{used in buffer access here}}
+}

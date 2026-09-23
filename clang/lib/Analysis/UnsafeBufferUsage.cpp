@@ -770,13 +770,15 @@ static bool isSafeStringViewTwoParamConstruct(const CXXConstructExpr &Node,
 // Returns true iff `Node` subscripts an array whose size is known at the
 // access, so that `-fsanitize=array-bounds` bounds-checks it.  This is what
 // `-Wno-unsafe-buffer-usage-in-static-sized-array` opts out of reporting, and
-// it mirrors `getArrayIndexingBound` in CodeGen: a trailing array member that
-// `-fstrict-flex-arrays` treats as a flexible array member is not checked
-// because its declared size is not trusted.
+// it mirrors `getArrayIndexingBound` in CodeGen: the size of a constant-size
+// or variable-length array is known, except for a trailing array member that
+// `-fstrict-flex-arrays` treats as a flexible array member, whose declared
+// size is not trusted.
 static bool isSubscriptOnSizedArray(const ArraySubscriptExpr &Node,
                                     const ASTContext &Ctx) {
   const Expr *Base = Node.getBase()->IgnoreParenImpCasts();
-  if (!isa<ConstantArrayType>(Base->getType()->getUnqualifiedDesugaredType()))
+  if (!isa<ConstantArrayType, VariableArrayType>(
+          Base->getType()->getUnqualifiedDesugaredType()))
     return false;
   return !Base->isFlexibleArrayMemberLike(
       Ctx, Ctx.getLangOpts().getStrictFlexArraysLevel());

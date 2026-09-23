@@ -484,7 +484,8 @@ features cannot lower the translation-unit ABI level;
   as a flexible array member, or for taking the address of a subscript
   (`&array[idx]`) unless the index is a constant within the array bounds, since
   `-fsanitize=array-bounds` does not check the former and allows the
-  one-past-the-end index for the latter.
+  one-past-the-end index for the latter. It now also suppresses warnings for
+  subscripts on variable-length arrays, which the sanitizer does check.
 
 - `-Wc++98-compat` now diagnoses explicit conversion functions in C++20 and
   later, matching the behavior in C++11 through C++17. (#GH161689)
