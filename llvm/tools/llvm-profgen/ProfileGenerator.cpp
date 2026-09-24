@@ -756,6 +756,11 @@ void ProfileGenerator::populateBoundarySamplesForAllFunctions(
     uint64_t Count = Entry.second;
     assert(Count != 0 && "Unexpected zero weight branch");
 
+    // The jump from a CFI jump table entry to its function body is not a
+    // call; the call was counted when it reached the entry.
+    if (Binary->addressIsCfiJumpTableEntry(SourceAddress))
+      continue;
+
     StringRef CalleeName = getCalleeNameForAddress(TargetAddress);
     if (CalleeName.size() == 0)
       continue;
@@ -1049,6 +1054,11 @@ void CSProfileGenerator::populateBoundarySamplesForFunction(
     uint64_t TargetAddress = Entry.first.second;
     uint64_t Count = Entry.second;
     assert(Count != 0 && "Unexpected zero weight branch");
+
+    // The jump from a CFI jump table entry to its function body is not a
+    // call; the call was counted when it reached the entry.
+    if (Binary->addressIsCfiJumpTableEntry(SourceAddress))
+      continue;
 
     StringRef CalleeName = getCalleeNameForAddress(TargetAddress);
     if (CalleeName.size() == 0)

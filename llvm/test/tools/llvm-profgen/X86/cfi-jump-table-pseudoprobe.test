@@ -1,0 +1,33 @@
+; Same program as cfi-jump-table.test, built with -fpseudo-probe-for-profiling.
+; The symbol table is loaded for pseudo-probe binaries, and a CFI jump table
+; contributes function symbols that are not functions: the address-taken names
+; (add1, add2, ...) on the entries, and a one-byte __typeid_<id>_global_addr
+; marker on the last entry. Neither may become a function range of its own.
+; RUN: llvm-profgen --format=text --perfscript=%S/Inputs/cfi-jump-table-probe.perfscript --binary=%S/Inputs/cfi-jump-table-probe.perfbin --output=%t
+; RUN: FileCheck %s --input-file %t
+; The jump table entries have no DWARF at all with
+; -lowertypetests-jump-table-debug-info=0; they are then recovered from the
+; symbol table, and the marker symbol must still be skipped.
+; RUN: llvm-profgen --format=text --perfscript=%S/Inputs/cfi-jump-table-probe-nodbg.perfscript --binary=%S/Inputs/cfi-jump-table-probe-nodbg.perfbin --output=%t
+; RUN: FileCheck %s --input-file %t
+
+; CHECK:      call_it:120:40
+; CHECK-NEXT:  1: 40
+; CHECK-NEXT:  2: 0
+; CHECK-NEXT:  3: 40
+; CHECK-NEXT:  4: 40 add1:36 add2:4
+; CHECK-NEXT:  !CFGChecksum: 281512530145278
+; CHECK-NEXT: add1:54:54
+; CHECK-NEXT:  1: 54
+; CHECK-NEXT:  !CFGChecksum: 4294967295
+; CHECK-NEXT: add2:6:6
+; CHECK-NEXT:  1: 6
+; CHECK-NOT: __ubsan_check_cfi_icall_jt
+; CHECK-NOT: __typeid_
+
+; clang -O2 -fno-pie -no-pie -flto -fuse-ld=lld -fvisibility=hidden -g
+;   -fdebug-info-for-profiling -fpseudo-probe-for-profiling
+;   -fsanitize=cfi-icall -fsanitize-trap=cfi-icall
+;   [-Wl,-mllvm,-lowertypetests-jump-table-debug-info=0]
+;   cfi-jump-table.c -o cfi-jump-table-probe[-nodbg].perfbin
+; (source in cfi-jump-table.test)

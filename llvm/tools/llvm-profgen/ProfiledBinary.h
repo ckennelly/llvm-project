@@ -112,6 +112,9 @@ struct FuncRange {
   BinaryFunction *Func;
   // Whether the start address is the real entry of the function.
   bool IsFuncEntry = false;
+  // Whether the range is a CFI jump table entry forwarding to the function
+  // (see ProfiledBinary::loadCfiJumpTableEntries).
+  bool IsCfiJumpTableEntry = false;
 
   StringRef getFuncName() { return Func->FuncName; }
 };
@@ -400,6 +403,18 @@ class ProfiledBinary {
   // Load debug info from DWARF unit.
   void loadSymbolsFromDWARFUnit(DWARFUnit &CompilationUnit);
 
+  // Find or create the function named CanonName.
+  BinaryFunction &getOrCreateBinaryFunction(StringRef CanonName);
+
+  // Record [StartAddress, EndAddress) as a range of Func, whose DWARF name is
+  // Name.
+  void addFuncRange(BinaryFunction &Func, StringRef Name, uint64_t StartAddress,
+                    uint64_t EndAddress, bool IsCfiJumpTableEntry = false);
+
+  // Load the entries of the CFI jump table described by JumpTableDie as ranges
+  // of the functions they forward to.
+  void loadCfiJumpTableEntries(const DWARFDie &JumpTableDie);
+
   // Create symbol to its start address mapping.
   void populateSymbolAddressList(const object::ObjectFile *O);
 
@@ -550,6 +565,12 @@ public:
     if (FrameAddr && addressIsCall(FrameAddr))
       return FrameAddr;
     return 0;
+  }
+
+  // Whether Address is inside a CFI jump table entry.
+  bool addressIsCfiJumpTableEntry(uint64_t Address) {
+    FuncRange *FRange = findFuncRange(Address);
+    return FRange && FRange->IsCfiJumpTableEntry;
   }
 
   FuncRange *findFuncRangeForStartAddr(uint64_t Address) {

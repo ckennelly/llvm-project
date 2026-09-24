@@ -90,6 +90,9 @@ namespace sampleprof {
 
 // Internal suffixes which are not reflected in the source code.
 static constexpr StringRef CanonicalSuffixes[] = {
+    // Appended last, by LowerTypeTests in the LTO backend, to the body of a
+    // function with a canonical CFI jump table; strip it first.
+    ".cfi",
     // Internal suffixes from CoroSplit pass
     ".cleanup", ".destroy", ".resume",
     // Internal suffixes from Bolt
@@ -97,6 +100,12 @@ static constexpr StringRef CanonicalSuffixes[] = {
     // Compiler/LTO internal
     ".llvm.", ".part.", ".isra.", ".constprop.", ".lto_priv."};
 static const StringRef CoroSuffixes[] = {".cleanup", ".destroy", ".resume"};
+
+// LowerTypeTests describes a CFI jump table in DWARF as an artificial function
+// named CfiJumpTableFnName with one inlined artificial subroutine named
+// <function>CfiJumpTableEntrySuffix per entry (see createJumpTableDebugInfo).
+static constexpr StringRef CfiJumpTableFnName = "__ubsan_check_cfi_icall_jt";
+static constexpr StringRef CfiJumpTableEntrySuffix = ".cfi_jt";
 
 static const Target *getTarget(const ObjectFile *Obj) {
   Triple TheTriple = Obj->makeTriple();
@@ -963,7 +972,15 @@ void ProfiledBinary::loadSymbolsFromSymtab(const ObjectFile *Obj) {
     assert(StartAddr < EndAddr && StartAddr >= getPreferredBaseAddress() &&
            "Function range is invalid.");
 
+    // LowerTypeTests marks the last CFI jump table entry with a one-byte
+    // __typeid_<id>_global_addr function symbol; it is not a function.
+    if (Name.starts_with("__typeid_") && Name.ends_with("_global_addr"))
+      continue;
+
     auto Range = findFuncRange(StartAddr);
+    // Symbols inside a CFI jump table entry do not name a function.
+    if (Range && Range->IsCfiJumpTableEntry)
+      continue;
     if (!Range) {
       assert(findFuncRange(EndAddr - 1) == nullptr &&
              "Function range overlaps with existing functions.");
@@ -1023,6 +1040,70 @@ void ProfiledBinary::loadSymbolsFromSymtab(const ObjectFile *Obj) {
   }
 }
 
+BinaryFunction &ProfiledBinary::getOrCreateBinaryFunction(StringRef CanonName) {
+  // Different DWARF symbols can have same function name, search or create
+  // BinaryFunction indexed by the name.
+  auto Ret = BinaryFunctions.try_emplace(CanonName);
+  auto &Func = Ret.first->second;
+  if (Ret.second)
+    Func.FuncName = Ret.first->first();
+  return Func;
+}
+
+void ProfiledBinary::addFuncRange(BinaryFunction &Func, StringRef Name,
+                                  uint64_t StartAddress, uint64_t EndAddress,
+                                  bool IsCfiJumpTableEntry) {
+  if (EndAddress <= StartAddress || StartAddress < getPreferredBaseAddress())
+    return;
+
+  // We may want to know all ranges for one function. Here group the
+  // ranges and store them into BinaryFunction.
+  Func.Ranges.emplace_back(StartAddress, EndAddress);
+
+  auto R = StartAddrToFuncRangeMap.emplace(StartAddress, FuncRange());
+  if (R.second) {
+    FuncRange &FRange = R.first->second;
+    FRange.Func = &Func;
+    FRange.StartAddress = StartAddress;
+    FRange.EndAddress = EndAddress;
+    // Indirect calls land on the jump table entry, so it is an entry of the
+    // function whatever the symbol table calls it.
+    FRange.IsFuncEntry = IsCfiJumpTableEntry;
+    FRange.IsCfiJumpTableEntry = IsCfiJumpTableEntry;
+  } else {
+    AddrsWithMultipleSymbols.insert(StartAddress);
+    if (ShowDetailedWarning)
+      WithColor::warning() << "Duplicated symbol start address at "
+                           << format("%8" PRIx64, StartAddress) << " "
+                           << R.first->second.getFuncName() << " and " << Name
+                           << "\n";
+  }
+}
+
+void ProfiledBinary::loadCfiJumpTableEntries(const DWARFDie &JumpTableDie) {
+  for (const DWARFDie &Entry : JumpTableDie.children()) {
+    if (Entry.getTag() != dwarf::DW_TAG_inlined_subroutine)
+      continue;
+    // The entry is named after the function it forwards to.
+    auto Name = Entry.getName(llvm::DINameKind::LinkageName);
+    if (!Name)
+      continue;
+    StringRef FuncName(Name);
+    if (!FuncName.consume_back(CfiJumpTableEntrySuffix))
+      continue;
+    auto RangesOrError = Entry.getAddressRanges();
+    if (!RangesOrError) {
+      consumeError(RangesOrError.takeError());
+      continue;
+    }
+    BinaryFunction &Func = getOrCreateBinaryFunction(
+        FunctionSamples::getCanonicalCoroFnName(FuncName));
+    for (const auto &Range : RangesOrError.get())
+      addFuncRange(Func, FuncName, Range.LowPC, Range.HighPC,
+                   /*IsCfiJumpTableEntry=*/true);
+  }
+}
+
 void ProfiledBinary::loadSymbolsFromDWARFUnit(DWARFUnit &CompilationUnit) {
   for (const auto &DieInfo : CompilationUnit.dies()) {
     llvm::DWARFDie Die(&CompilationUnit, &DieInfo);
@@ -1035,6 +1116,11 @@ void ProfiledBinary::loadSymbolsFromDWARFUnit(DWARFUnit &CompilationUnit) {
     if (!Name)
       continue;
 
+    if (Name == CfiJumpTableFnName) {
+      loadCfiJumpTableEntries(Die);
+      continue;
+    }
+
     auto CanonName = FunctionSamples::getCanonicalCoroFnName(Name);
     auto RangesOrError = Die.getAddressRanges();
     if (!RangesOrError)
@@ -1044,40 +1130,9 @@ void ProfiledBinary::loadSymbolsFromDWARFUnit(DWARFUnit &CompilationUnit) {
     if (Ranges.empty())
       continue;
 
-    // Different DWARF symbols can have same function name, search or create
-    // BinaryFunction indexed by the name.
-    auto Ret = BinaryFunctions.try_emplace(CanonName);
-    auto &Func = Ret.first->second;
-    if (Ret.second)
-      Func.FuncName = Ret.first->first();
-
-    for (const auto &Range : Ranges) {
-      uint64_t StartAddress = Range.LowPC;
-      uint64_t EndAddress = Range.HighPC;
-
-      if (EndAddress <= StartAddress ||
-          StartAddress < getPreferredBaseAddress())
-        continue;
-
-      // We may want to know all ranges for one function. Here group the
-      // ranges and store them into BinaryFunction.
-      Func.Ranges.emplace_back(StartAddress, EndAddress);
-
-      auto R = StartAddrToFuncRangeMap.emplace(StartAddress, FuncRange());
-      if (R.second) {
-        FuncRange &FRange = R.first->second;
-        FRange.Func = &Func;
-        FRange.StartAddress = StartAddress;
-        FRange.EndAddress = EndAddress;
-      } else {
-        AddrsWithMultipleSymbols.insert(StartAddress);
-        if (ShowDetailedWarning)
-          WithColor::warning()
-              << "Duplicated symbol start address at "
-              << format("%8" PRIx64, StartAddress) << " "
-              << R.first->second.getFuncName() << " and " << Name << "\n";
-      }
-    }
+    BinaryFunction &Func = getOrCreateBinaryFunction(CanonName);
+    for (const auto &Range : Ranges)
+      addFuncRange(Func, Name, Range.LowPC, Range.HighPC);
   }
 }
 
@@ -1160,6 +1215,13 @@ SampleContextFrameVector ProfiledBinary::symbolize(const InstructionPointer &IP,
       unwrapOrError(Symbolizer->symbolizeInlinedCode(
                         SymbolizerPath.str(), getSectionedAddress(IP.Address)),
                     SymbolizerPath);
+
+  // A CFI jump table entry has no source of its own; leave samples in it
+  // unattributed like any other trampoline without debug info.
+  if (InlineStack.getNumberOfFrames() &&
+      InlineStack.getFrame(InlineStack.getNumberOfFrames() - 1).FunctionName ==
+          CfiJumpTableFnName)
+    return SampleContextFrameVector();
 
   SampleContextFrameVector CallStack;
   for (int32_t I = InlineStack.getNumberOfFrames() - 1; I >= 0; I--) {
