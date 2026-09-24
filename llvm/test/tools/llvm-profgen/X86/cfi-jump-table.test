@@ -1,0 +1,46 @@
+; Indirect calls under -fsanitize=cfi-icall go through a jump table whose
+; entries are described in DWARF as inlined subroutines of an artificial
+; function named __ubsan_check_cfi_icall_jt (one entry per address-taken
+; function, named <func>.cfi_jt). A profiled branch into such an entry is a
+; call to the function the entry forwards to, so the call site must be
+; attributed to add1/add2 rather than to the jump table; the jmp from the
+; entry to the function body is not another call, so the callee gets its head
+; samples exactly once.
+; RUN: llvm-profgen --format=text --perfscript=%S/Inputs/cfi-jump-table.perfscript --binary=%S/Inputs/cfi-jump-table.perfbin --output=%t
+; RUN: FileCheck %s --input-file %t
+
+; CHECK:      call_it:1280:40
+; CHECK-NEXT:  0: 40
+; CHECK-NEXT:  0.1: 60 add1:36 add2:4
+; CHECK-NEXT:  65527: 40
+; CHECK-NEXT:  0: __clang_trap_msg$Undefined Behavior Sanitizer$Control flow integrity check failed:0
+; CHECK-NEXT:   0: 0
+; CHECK-NEXT: add1:216:36
+; CHECK-NEXT:  0: 54
+; CHECK-NEXT: add2:24:4
+; CHECK-NEXT:  0: 6
+; CHECK-NOT: __ubsan_check_cfi_icall_jt
+; CHECK-NOT: .cfi_jt
+
+; clang -O2 -fno-pie -no-pie -flto -fuse-ld=lld -fvisibility=hidden -g
+;   -fdebug-info-for-profiling -fsanitize=cfi-icall -fsanitize-trap=cfi-icall
+;   cfi-jump-table.c -o cfi-jump-table.perfbin
+;
+; #include <stdio.h>
+; #include <stdlib.h>
+; typedef int (*fn_t)(int);
+; __attribute__((noinline)) int add1(int x) { return x + 1; }
+; __attribute__((noinline)) int add2(int x) { return x + 2; }
+; __attribute__((noinline)) int add3(int x) { return x + 3; }
+; fn_t table[3] = {add1, add2, add3};
+; __attribute__((noinline)) int call_it(fn_t f, int x) { return f(x) + 1; }
+; int main(int argc, char **argv) {
+;   int n = argc > 1 ? atoi(argv[1]) : 1000000;
+;   int sum = 0;
+;   for (int i = 0; i < n; i++) {
+;     fn_t f = table[(i % 100 == 0) ? (i % 3) : 0];
+;     sum += call_it(f, i);
+;   }
+;   printf("%d\n", sum);
+;   return 0;
+; }
