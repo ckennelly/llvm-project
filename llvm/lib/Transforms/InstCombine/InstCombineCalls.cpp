@@ -5309,6 +5309,11 @@ Instruction *InstCombinerImpl::visitCallBase(CallBase &Call) {
     return CallBase::removeOperandBundle(&Call, LLVMContext::OB_kcfi);
   }
 
+  // Likewise for cfi operand bundles: a direct call cannot be redirected, so
+  // the type check that the bundle stands for is vacuous.
+  if (Call.getOperandBundle(LLVMContext::OB_cfi) && !Call.isIndirectCall())
+    return CallBase::removeOperandBundle(&Call, LLVMContext::OB_cfi);
+
   if (isRemovableAlloc(&Call, &TLI))
     return visitAllocSite(Call);
 

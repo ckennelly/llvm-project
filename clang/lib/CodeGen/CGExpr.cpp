@@ -7218,8 +7218,20 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType,
 
   // If we are checking indirect calls and this call is indirect, check that the
   // function pointer is a member of the bit set for the function type.
+  llvm::Metadata *CFIBundleTypeId = nullptr;
   if (SanOpts.has(SanitizerKind::CFIICall) &&
-      (!TargetDecl || !isa<FunctionDecl>(TargetDecl)) && !CFIUnchecked) {
+      (!TargetDecl || !isa<FunctionDecl>(TargetDecl)) && !CFIUnchecked &&
+      CGM.getCodeGenOpts().SanitizeCfiICallOperandBundle &&
+      !CGM.getCodeGenOpts().SanitizeCfiCrossDso &&
+      CGM.getCodeGenOpts().SanitizeTrap.has(SanitizerKind::CFIICall)) {
+    // With the operand bundle model the check travels with the call as a
+    // "cfi" operand bundle (attached below, when the call is emitted) instead
+    // of being emitted here as a separate branch to the trap block. Only the
+    // trapping, non-cross-DSO configuration is expressed that way.
+    CFIBundleTypeId =
+        CGM.CreateMetadataIdentifierForFnType(QualType(FnType, 0));
+  } else if (SanOpts.has(SanitizerKind::CFIICall) &&
+             (!TargetDecl || !isa<FunctionDecl>(TargetDecl)) && !CFIUnchecked) {
     auto CheckOrdinal = SanitizerKind::SO_CFIICall;
     auto CheckHandler = SanitizerHandler::CFICheckFail;
     SanitizerDebugLocation SanScope(this, {CheckOrdinal}, CheckHandler);
@@ -7327,8 +7339,12 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType,
   }
 
   llvm::CallBase *LocalCallOrInvoke = nullptr;
+  // Set only now, after the arguments have been evaluated, so that a nested
+  // call in an argument cannot pick the bundle up instead.
+  CFIICallBundleTypeId = CFIBundleTypeId;
   RValue Call = EmitCall(FnInfo, Callee, ReturnValue, Args, &LocalCallOrInvoke,
                          E == MustTailCall, E->getExprLoc());
+  assert(!CFIICallBundleTypeId && "cfi bundle type id was not consumed");
 
   if (auto *CalleeDecl = dyn_cast_or_null<FunctionDecl>(TargetDecl)) {
     if (CalleeDecl->hasAttr<RestrictAttr>() ||

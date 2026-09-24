@@ -4361,7 +4361,7 @@ void Verifier::visitCallBase(CallBase &Call) {
        FoundGCTransitionBundle = false, FoundCFGuardTargetBundle = false,
        FoundPreallocatedBundle = false, FoundGCLiveBundle = false,
        FoundPtrauthBundle = false, FoundKCFIBundle = false,
-       FoundAttachedCallBundle = false;
+       FoundCFIBundle = false, FoundAttachedCallBundle = false;
   for (unsigned i = 0, e = Call.getNumOperandBundles(); i < e; ++i) {
     OperandBundleUse BU = Call.getOperandBundleAt(i);
     for (const Value *Input : BU.Inputs)
@@ -4407,6 +4407,17 @@ void Verifier::visitCallBase(CallBase &Call) {
       Check(isa<ConstantInt>(BU.Inputs[0]) &&
                 BU.Inputs[0]->getType()->isIntegerTy(32),
             "Kcfi bundle operand must be an i32 constant", Call);
+    } else if (Tag == LLVMContext::OB_cfi) {
+      Check(!FoundCFIBundle, "Multiple cfi operand bundles", Call);
+      FoundCFIBundle = true;
+      Check(BU.Inputs.size() == 1, "Expected exactly one cfi bundle operand",
+            Call);
+      // The type identifier is what llvm.type.test takes: a string for an
+      // external type, a distinct node for an internal one.
+      auto *MDV = dyn_cast<MetadataAsValue>(BU.Inputs[0]);
+      Check(MDV && (isa<MDString>(MDV->getMetadata()) ||
+                    isa<MDNode>(MDV->getMetadata())),
+            "Cfi bundle operand must be a metadata type identifier", Call);
     } else if (Tag == LLVMContext::OB_preallocated) {
       Check(!FoundPreallocatedBundle, "Multiple preallocated operand bundles",
             Call);

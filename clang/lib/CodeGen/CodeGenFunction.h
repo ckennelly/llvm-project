@@ -368,6 +368,10 @@ public:
   /// CurCodeDecl - This is the inner-most code context, which includes blocks.
   const Decl *CurCodeDecl = nullptr;
   const CGFunctionInfo *CurFnInfo = nullptr;
+  /// Type identifier for a "cfi" operand bundle that the next EmitCall should
+  /// attach to the call it emits, set by the function-pointer call emission
+  /// when -fsanitize=cfi-icall checks are emitted as operand bundles.
+  llvm::Metadata *CFIICallBundleTypeId = nullptr;
   QualType FnRetTy;
   llvm::Function *CurFn = nullptr;
 

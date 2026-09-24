@@ -14,6 +14,7 @@
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
@@ -151,6 +152,37 @@ void promoteTypeIds(Module &M, StringRef ModuleId) {
     for (const Use &U : TypeCheckedLoadRelativeFunc->uses()) {
       auto CI = cast<CallInst>(U.getUser());
       ExternalizeTypeId(CI, 2);
+    }
+  }
+
+  // A "cfi" operand bundle is a type test of the called operand, so its type
+  // id needs the same treatment. Bundles are immutable, so rebuild the call.
+  for (Function &F : M) {
+    for (Instruction &I : llvm::make_early_inc_range(instructions(F))) {
+      auto *CB = dyn_cast<CallBase>(&I);
+      if (!CB)
+        continue;
+      auto Bundle = CB->getOperandBundle(LLVMContext::OB_cfi);
+      if (!Bundle)
+        continue;
+      Metadata *MD = cast<MetadataAsValue>(Bundle->Inputs[0])->getMetadata();
+      if (!isa<MDNode>(MD) || !cast<MDNode>(MD)->isDistinct())
+        continue;
+      Metadata *&GlobalMD = LocalToGlobal[MD];
+      if (!GlobalMD) {
+        std::string NewName = (Twine(LocalToGlobal.size()) + ModuleId).str();
+        GlobalMD = MDString::get(M.getContext(), NewName);
+      }
+      Value *NewTypeId = MetadataAsValue::get(M.getContext(), GlobalMD);
+      SmallVector<OperandBundleDef, 2> Bundles;
+      CB->getOperandBundlesAsDefs(Bundles);
+      for (OperandBundleDef &B : Bundles)
+        if (B.getTag() == "cfi")
+          B = OperandBundleDef("cfi", ArrayRef<Value *>(NewTypeId));
+      CallBase *NewCB = CallBase::Create(CB, Bundles, CB->getIterator());
+      NewCB->copyMetadata(*CB);
+      CB->replaceAllUsesWith(NewCB);
+      CB->eraseFromParent();
     }
   }
 

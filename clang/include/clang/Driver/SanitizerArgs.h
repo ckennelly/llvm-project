@@ -48,6 +48,7 @@ class SanitizerArgs {
   bool CfiCrossDso = false;
   bool CfiICallGeneralizePointers = false;
   bool CfiICallNormalizeIntegers = false;
+  bool CfiICallOperandBundle = false;
   bool CfiCanonicalJumpTables = false;
   bool KcfiArity = false;
   std::optional<std::string> KcfiHash;

@@ -3020,6 +3020,10 @@ def fsanitize_cfi_icall_normalize_integers : Flag<["-"], "fsanitize-cfi-icall-ex
                                              Group<f_clang_Group>,
                                              HelpText<"Normalize integers in CFI indirect call type signature checks">,
                                              MarshallingInfoFlag<CodeGenOpts<"SanitizeCfiICallNormalizeIntegers">>;
+def fsanitize_cfi_icall_operand_bundle : Flag<["-"], "fsanitize-cfi-icall-experimental-operand-bundle">,
+                                         Group<f_clang_Group>,
+                                         HelpText<"Emit CFI indirect call checks as operand bundles on the call">,
+                                         MarshallingInfoFlag<CodeGenOpts<"SanitizeCfiICallOperandBundle">>;
 defm sanitize_cfi_canonical_jump_tables : BoolOption<"f", "sanitize-cfi-canonical-jump-tables",
   CodeGenOpts<"SanitizeCfiCanonicalJumpTables">, DefaultFalse,
   PosFlag<SetTrue, [], [ClangOption], "Make">,

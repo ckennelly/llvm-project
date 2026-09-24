@@ -2610,7 +2610,7 @@ llvm::InlineResult llvm::CanInlineCallSite(const CallBase &CB,
         continue;
       if (Tag == LLVMContext::OB_clang_arc_attachedcall)
         continue;
-      if (Tag == LLVMContext::OB_kcfi)
+      if (Tag == LLVMContext::OB_kcfi || Tag == LLVMContext::OB_cfi)
         continue;
       if (Tag == LLVMContext::OB_convergencectrl) {
         IFI.ConvergenceControlToken = OBUse.Inputs[0].get();

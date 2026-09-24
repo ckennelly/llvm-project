@@ -5711,6 +5711,10 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
 
   assert(Callee.isOrdinary() || Callee.isVirtual());
 
+  // Take the pending cfi-icall bundle type id, if any, before anything else
+  // can be emitted.
+  llvm::Metadata *CFIICallTypeId = std::exchange(CFIICallBundleTypeId, nullptr);
+
   // Handle struct-return functions by passing a pointer to the
   // location that we would like to return into.
   QualType RetTy = CallInfo.getReturnType();
@@ -6386,6 +6390,10 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   if (SanOpts.has(SanitizerKind::KCFI) &&
       !isa_and_nonnull<FunctionDecl>(TargetDecl))
     EmitKCFIOperandBundle(ConcreteCallee, BundleList);
+
+  if (CFIICallTypeId)
+    BundleList.emplace_back(
+        "cfi", llvm::MetadataAsValue::get(getLLVMContext(), CFIICallTypeId));
 
   // Add the pointer-authentication bundle.
   EmitPointerAuthOperandBundle(ConcreteCallee.getPointerAuthInfo(), BundleList);

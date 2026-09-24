@@ -994,6 +994,9 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
     CfiICallNormalizeIntegers =
         Args.hasArg(options::OPT_fsanitize_cfi_icall_normalize_integers);
 
+    CfiICallOperandBundle =
+        Args.hasArg(options::OPT_fsanitize_cfi_icall_operand_bundle);
+
     if (CfiCrossDso && CfiICallGeneralizePointers && DiagnoseErrors)
       D.Diag(diag::err_drv_argument_not_allowed_with)
           << "-fsanitize-cfi-cross-dso"
@@ -1618,6 +1621,9 @@ void SanitizerArgs::addArgs(const ToolChain &TC, const llvm::opt::ArgList &Args,
 
   if (CfiICallNormalizeIntegers)
     CmdArgs.push_back("-fsanitize-cfi-icall-experimental-normalize-integers");
+
+  if (CfiICallOperandBundle)
+    CmdArgs.push_back("-fsanitize-cfi-icall-experimental-operand-bundle");
 
   if (KcfiArity) {
     if (!TC.getTriple().isOSLinux() || !TC.getTriple().isArch64Bit()) {

@@ -51,6 +51,7 @@
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -104,6 +105,10 @@ STATISTIC(ByteArraySizeBits, "Byte array size in bits");
 STATISTIC(ByteArraySizeBytes, "Byte array size in bytes");
 STATISTIC(NumByteArraysCreated, "Number of byte arrays created");
 STATISTIC(NumTypeTestCallsLowered, "Number of type test calls lowered");
+STATISTIC(NumCfiBundlesLowered,
+          "Number of cfi operand bundles lowered to type tests");
+STATISTIC(NumCfiBundlesDirect,
+          "Number of cfi operand bundles dropped from direct calls");
 STATISTIC(NumTypeIdDisjointSets, "Number of disjoint sets of type identifiers");
 
 bool BitSetInfo::containsGlobalOffset(uint64_t Offset) const {
@@ -762,6 +767,7 @@ class LowerTypeTestsModule {
   uint8_t *exportTypeId(StringRef TypeId, const TypeIdLowering &TIL);
   TypeIdLowering importTypeId(StringRef TypeId);
   void importTypeTest(CallInst *CI);
+  bool lowerCfiOperandBundles();
   void importFunction(Function *F, bool isJumpTableCanonical);
 
   ByteArrayInfo *createByteArray(const BitSetInfo &BSI);
@@ -2424,6 +2430,61 @@ bool lowertypetests::cleanUpTypeCheckedLoad(Module &M, Function &CheckedLoadFn,
   return Changed;
 }
 
+/// Remove every cfi operand bundle in the module. If \p Lower is set, an
+/// indirect call's bundle is replaced by an explicit llvm.type.test of the
+/// called operand that traps on failure; otherwise the bundles are simply
+/// dropped. Bundles on direct calls are always dropped: a direct call cannot be
+/// redirected, so the check is vacuous.
+static bool lowerOrDropCfiOperandBundles(Module &M, bool Lower) {
+  SmallVector<CallBase *, 16> Calls;
+  for (Function &F : M)
+    for (Instruction &I : instructions(F))
+      if (auto *CB = dyn_cast<CallBase>(&I))
+        if (CB->getOperandBundle(LLVMContext::OB_cfi))
+          Calls.push_back(CB);
+  if (Calls.empty())
+    return false;
+
+  LLVMContext &Ctx = M.getContext();
+  MDNode *LikelyWeights = MDBuilder(Ctx).createLikelyBranchWeights();
+  for (CallBase *CB : Calls) {
+    Value *TypeId = CB->getOperandBundle(LLVMContext::OB_cfi)->Inputs[0];
+    CallBase *Call = CallBase::removeOperandBundle(CB, LLVMContext::OB_cfi,
+                                                   CB->getIterator());
+    assert(Call != CB);
+    Call->copyMetadata(*CB);
+    CB->replaceAllUsesWith(Call);
+    CB->eraseFromParent();
+
+    if (!Lower)
+      continue;
+    if (!Call->isIndirectCall()) {
+      ++NumCfiBundlesDirect;
+      continue;
+    }
+
+    // Emit the type test and trap if it fails. The trap is the same
+    // llvm.ubsantrap that clang emits for -fsanitize=cfi-icall in trap mode.
+    IRBuilder<> B(Call);
+    Value *Test = B.CreateIntrinsic(Intrinsic::type_test, {},
+                                    {Call->getCalledOperand(), TypeId});
+    Instruction *ElseTerm = SplitBlockAndInsertIfElse(
+        Test, Call, /*Unreachable=*/true, LikelyWeights);
+    B.SetInsertPoint(ElseTerm);
+    auto *Trap = cast<CallInst>(B.CreateIntrinsic(
+        Intrinsic::ubsantrap, {},
+        {ConstantInt::get(Type::getInt8Ty(Ctx), /*CFICheckFail*/ 2)}));
+    Trap->setDoesNotReturn();
+    Trap->setDoesNotThrow();
+    ++NumCfiBundlesLowered;
+  }
+  return true;
+}
+
+bool LowerTypeTestsModule::lowerCfiOperandBundles() {
+  return lowerOrDropCfiOperandBundles(M, /*Lower=*/true);
+}
+
 static void dropTypeTests(Module &M, Function &TypeTestFunc,
                           bool ShouldDropAll) {
   for (Use &U : llvm::make_early_inc_range(TypeTestFunc.uses())) {
@@ -2449,6 +2510,7 @@ static void dropTypeTests(Module &M, Function &TypeTestFunc,
 }
 
 static bool dropTypeTests(Module &M, bool ShouldDropAll) {
+  bool DroppedBundles = lowerOrDropCfiOperandBundles(M, /*Lower=*/false);
   Function *TypeTestFunc =
       Intrinsic::getDeclarationIfExists(&M, Intrinsic::type_test);
   if (TypeTestFunc)
@@ -2482,13 +2544,10 @@ static bool dropTypeTests(Module &M, bool ShouldDropAll) {
       GV.eraseMetadata(LLVMContext::MD_vcall_visibility);
     return true;
   }
-  return false;
+  return DroppedBundles;
 }
 
 bool LowerTypeTestsModule::lower() {
-  Function *TypeTestFunc =
-      Intrinsic::getDeclarationIfExists(&M, Intrinsic::type_test);
-
   // If only some of the modules were split, we cannot correctly perform
   // this transformation. We already checked for the presense of type tests
   // with partially split modules during the thin link, and would have emitted
@@ -2497,12 +2556,19 @@ bool LowerTypeTestsModule::lower() {
       (ImportSummary && ImportSummary->partiallySplitLTOUnits()))
     return false;
 
+  // Turn cfi operand bundles into explicit type tests first so that they are
+  // lowered along with everything else below.
+  bool LoweredBundles = lowerCfiOperandBundles();
+
+  Function *TypeTestFunc =
+      Intrinsic::getDeclarationIfExists(&M, Intrinsic::type_test);
+
   Function *ICallBranchFunnelFunc =
       Intrinsic::getDeclarationIfExists(&M, Intrinsic::icall_branch_funnel);
   if ((!TypeTestFunc || TypeTestFunc->use_empty()) &&
       (!ICallBranchFunnelFunc || ICallBranchFunnelFunc->use_empty()) &&
       !ExportSummary && !ImportSummary)
-    return false;
+    return LoweredBundles;
 
   if (ImportSummary) {
     if (TypeTestFunc)

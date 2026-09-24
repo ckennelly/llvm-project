@@ -402,6 +402,14 @@ static void computeFunctionSummary(
         continue;
       }
 
+      // A cfi operand bundle is a type test on the called operand.
+      if (auto Bundle = CB->getOperandBundle(LLVMContext::OB_cfi)) {
+        auto *TypeMDVal = cast<MetadataAsValue>(Bundle->Inputs[0]);
+        if (auto *TypeId = dyn_cast<MDString>(TypeMDVal->getMetadata()))
+          TypeTests.insert(
+              GlobalValue::getGUIDAssumingExternalLinkage(TypeId->getString()));
+      }
+
       const auto *CI = dyn_cast<CallInst>(&I);
       // Since we don't know exactly which local values are referenced in inline
       // assembly, conservatively mark the function as possibly referencing

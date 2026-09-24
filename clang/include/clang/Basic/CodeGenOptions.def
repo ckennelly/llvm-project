@@ -296,6 +296,8 @@ CODEGENOPT(SanitizeCfiICallGeneralizePointers, 1, 0, Benign) ///< Generalize poi
                                                              ///< CFI icall function signatures
 CODEGENOPT(SanitizeCfiICallNormalizeIntegers, 1, 0, Benign) ///< Normalize integer types in
                                                             ///< CFI icall function signatures
+CODEGENOPT(SanitizeCfiICallOperandBundle, 1, 0, Benign) ///< Attach cfi-icall checks to
+                                                        ///< calls as operand bundles
 CODEGENOPT(SanitizeCfiCanonicalJumpTables, 1, 0, Benign) ///< Make jump table symbols canonical
                                                          ///< instead of creating a local jump table.
 CODEGENOPT(SanitizeKcfiArity, 1, 0, Benign) ///< Embed arity in KCFI patchable function prefix
