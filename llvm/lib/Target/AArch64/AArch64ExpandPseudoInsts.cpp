@@ -1492,12 +1492,13 @@ bool AArch64ExpandPseudoImpl::expandMI(MachineBasicBlock &MBB,
     } else {
       // Small codemodel expand into ADRP + LDR.
       MachineFunction &MF = *MI.getParent()->getParent();
+      const AArch64Subtarget &STI = MF.getSubtarget<AArch64Subtarget>();
       DebugLoc DL = MI.getDebugLoc();
       MachineInstrBuilder MIB1 =
           BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(AArch64::ADRP), DstReg);
 
       MachineInstrBuilder MIB2;
-      if (MF.getSubtarget<AArch64Subtarget>().isTargetILP32()) {
+      if (STI.isTargetILP32()) {
         auto TRI = MBB.getParent()->getSubtarget().getRegisterInfo();
         unsigned Reg32 = TRI->getSubReg(DstReg, AArch64::sub_32);
         MIB2 = BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(AArch64::LDRWui))
@@ -1536,6 +1537,29 @@ bool AArch64ExpandPseudoImpl::expandMI(MachineBasicBlock &MBB,
       if (MI.peekDebugInstrNum() != 0)
         MIB2->setDebugInstrNum(MI.peekDebugInstrNum());
       transferImpOps(MI, MIB1, MIB2);
+
+      // An ELF linker may only relax the GOT load (to ADRP+ADD or ADR) if the
+      // ADRP and the LDR are adjacent. Bundle them so that the post-RA
+      // scheduler does not move them apart. LLD does not relax the ILP32 form,
+      // and neither speculative load hardening nor the Cortex-A53 erratum
+      // 835769 workaround look inside bundles.
+      if (STI.isTargetELF() && !STI.isTargetILP32() &&
+          !STI.fixCortexA53_835769() &&
+          !MF.getFunction().hasFnAttribute(
+              Attribute::SpeculativeLoadHardening)) {
+        finalizeBundle(MBB, MIB1->getIterator(),
+                       std::next(MIB2->getIterator()));
+        // LiveDebugValues does not look inside bundles either, so make debug
+        // users of the load refer to the bundle's def of the result instead.
+        if (unsigned InstrNum = MIB2->peekDebugInstrNum()) {
+          MachineInstr &Bundle = *std::prev(MIB1->getIterator());
+          int DefIdx =
+              Bundle.findRegisterDefOperandIdx(DstReg, /*TRI=*/nullptr);
+          assert(DefIdx >= 0 && "Bundle does not define the GOT load result");
+          MF.makeDebugValueSubstitution(
+              {InstrNum, 0}, {Bundle.getDebugInstrNum(), unsigned(DefIdx)});
+        }
+      }
     }
     MI.eraseFromParent();
     return true;

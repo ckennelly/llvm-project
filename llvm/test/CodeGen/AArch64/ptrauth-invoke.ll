@@ -166,8 +166,8 @@ continuebb:
 ; ELF-NEXT:         add x8, x8, :lo12:.Lhello_str
 ; ELF-NEXT:         str x8, [x0]
 ; ELF-NEXT: [[PRECALL:.L.*]]:
-; ELF-NEXT:         adrp x1, :got:_ZTIPKc
 ; ELF-NEXT:         mov x2, xzr
+; ELF-NEXT:         adrp x1, :got:_ZTIPKc
 ; ELF-NEXT:         ldr x1, [x1, :got_lo12:_ZTIPKc]
 ; ELF-NEXT:         mov x17, #42
 ; ELF-NEXT:         blrab x19, x17

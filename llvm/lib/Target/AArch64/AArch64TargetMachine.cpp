@@ -973,7 +973,7 @@ void AArch64PassConfig::addPreEmitPass2() {
   addPass(createPseudoProbeInserter());
 
   // SVE bundles move prefixes with destructive operations. BLR_RVMARKER pseudo
-  // instructions are lowered to bundles as well.
+  // instructions and, on ELF, LOADgot are lowered to bundles as well.
   addPass(createUnpackMachineBundlesLegacy(nullptr));
 }
 

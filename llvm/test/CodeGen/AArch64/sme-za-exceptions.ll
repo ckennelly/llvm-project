@@ -57,8 +57,8 @@ define void @za_with_raii(i1 %fail) "aarch64_inout_za" personality ptr @__gxx_pe
 ; CHECK-NEXT:    add x8, x8, :lo12:.L.str
 ; CHECK-NEXT:    str x8, [x0]
 ; CHECK-NEXT:  .Ltmp0: // EH_LABEL
-; CHECK-NEXT:    adrp x1, :got:typeinfo_for_char_const_ptr
 ; CHECK-NEXT:    mov x2, xzr
+; CHECK-NEXT:    adrp x1, :got:typeinfo_for_char_const_ptr
 ; CHECK-NEXT:    ldr x1, [x1, :got_lo12:typeinfo_for_char_const_ptr]
 ; CHECK-NEXT:    bl __cxa_throw
 ; CHECK-NEXT:  .Ltmp1: // EH_LABEL

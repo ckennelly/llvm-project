@@ -12,8 +12,8 @@ define void @logical_32bit() minsize {
 ; CHECK-LABEL: logical_32bit:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    adrp x8, :got:var1_32
-; CHECK-NEXT:    adrp x9, :got:var2_32
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:var1_32]
+; CHECK-NEXT:    adrp x9, :got:var2_32
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:var2_32]
 ; CHECK-NEXT:    ldr w10, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -128,8 +128,8 @@ define void @logical_64bit() minsize {
 ; CHECK-LABEL: logical_64bit:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    adrp x8, :got:var1_64
-; CHECK-NEXT:    adrp x9, :got:var2_64
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:var1_64]
+; CHECK-NEXT:    adrp x9, :got:var2_64
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:var2_64]
 ; CHECK-NEXT:    ldr x10, [x8]
 ; CHECK-NEXT:    ldr x9, [x9]
@@ -247,8 +247,8 @@ define void @flag_setting() {
 ; CHECK-SD-LABEL: flag_setting:
 ; CHECK-SD:       // %bb.0:
 ; CHECK-SD-NEXT:    adrp x8, :got:var1_64
-; CHECK-SD-NEXT:    adrp x10, :got:var2_64
 ; CHECK-SD-NEXT:    ldr x8, [x8, :got_lo12:var1_64]
+; CHECK-SD-NEXT:    adrp x10, :got:var2_64
 ; CHECK-SD-NEXT:    ldr x10, [x10, :got_lo12:var2_64]
 ; CHECK-SD-NEXT:    ldr x9, [x8]
 ; CHECK-SD-NEXT:    ldr x10, [x10]
@@ -268,8 +268,8 @@ define void @flag_setting() {
 ; CHECK-GI-LABEL: flag_setting:
 ; CHECK-GI:       // %bb.0:
 ; CHECK-GI-NEXT:    adrp x8, :got:var1_64
-; CHECK-GI-NEXT:    adrp x10, :got:var2_64
 ; CHECK-GI-NEXT:    ldr x8, [x8, :got_lo12:var1_64]
+; CHECK-GI-NEXT:    adrp x10, :got:var2_64
 ; CHECK-GI-NEXT:    ldr x10, [x10, :got_lo12:var2_64]
 ; CHECK-GI-NEXT:    ldr x9, [x8]
 ; CHECK-GI-NEXT:    ldr x10, [x10]

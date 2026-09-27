@@ -75,10 +75,10 @@ define i64 @func1() {
 ; CHECK-LINUX-NEXT:    str x30, [sp, #48] // 8-byte Spill
 ; CHECK-LINUX-NEXT:    .cfi_def_cfa_offset 64
 ; CHECK-LINUX-NEXT:    .cfi_offset w30, -16
-; CHECK-LINUX-NEXT:    adrp x8, :got:f
 ; CHECK-LINUX-NEXT:    mov w9, #544 // =0x220
-; CHECK-LINUX-NEXT:    add x0, sp, #8
+; CHECK-LINUX-NEXT:    adrp x8, :got:f
 ; CHECK-LINUX-NEXT:    ldr x8, [x8, :got_lo12:f]
+; CHECK-LINUX-NEXT:    add x0, sp, #8
 ; CHECK-LINUX-NEXT:    movk w9, #54815, lsl #16
 ; CHECK-LINUX-NEXT:    str w9, [sp, #16]
 ; CHECK-LINUX-NEXT:    add x9, sp, #56
@@ -174,11 +174,11 @@ define i64 @func2() {
 ; CHECK-LINUX-NEXT:    str x30, [sp, #-16]! // 8-byte Folded Spill
 ; CHECK-LINUX-NEXT:    .cfi_def_cfa_offset 16
 ; CHECK-LINUX-NEXT:    .cfi_offset w30, -16
-; CHECK-LINUX-NEXT:    adrp x8, :got:f
 ; CHECK-LINUX-NEXT:    mov w9, #544 // =0x220
+; CHECK-LINUX-NEXT:    adrp x8, :got:f
+; CHECK-LINUX-NEXT:    ldr x8, [x8, :got_lo12:f]
 ; CHECK-LINUX-NEXT:    adrp x0, trampg
 ; CHECK-LINUX-NEXT:    add x0, x0, :lo12:trampg
-; CHECK-LINUX-NEXT:    ldr x8, [x8, :got_lo12:f]
 ; CHECK-LINUX-NEXT:    movk w9, #54815, lsl #16
 ; CHECK-LINUX-NEXT:    str w9, [x0, #8]
 ; CHECK-LINUX-NEXT:    add x9, sp, #8

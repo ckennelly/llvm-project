@@ -46,8 +46,8 @@ define void @intra_block_csinc_different_regs(i32 %x, i32 %y, ptr %out1, ptr %ou
 ; CHECK-LABEL: intra_block_csinc_different_regs:
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    adrp x8, :got:a
-; CHECK-NEXT:    adrp x9, :got:b
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:a]
+; CHECK-NEXT:    adrp x9, :got:b
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:b]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -187,8 +187,8 @@ define i32 @combine_gt_lt_5() #0 {
 ; CHECK-NEXT:    b.le .LBB4_3
 ; CHECK-NEXT:  // %bb.1: // %land.lhs.true
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:c]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -201,8 +201,8 @@ define i32 @combine_gt_lt_5() #0 {
 ; CHECK-NEXT:    b.ge .LBB4_6
 ; CHECK-NEXT:  // %bb.4: // %land.lhs.true3
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:d]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -319,8 +319,8 @@ define i32 @combine_lt_gt_5() #0 {
 ; CHECK-NEXT:    b.ge .LBB6_3
 ; CHECK-NEXT:  // %bb.1: // %land.lhs.true
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:c]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -333,8 +333,8 @@ define i32 @combine_lt_gt_5() #0 {
 ; CHECK-NEXT:    b.le .LBB6_6
 ; CHECK-NEXT:  // %bb.4: // %land.lhs.true3
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:d]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -386,8 +386,8 @@ define i32 @combine_gt_lt_n5() #0 {
 ; CHECK-NEXT:    b.le .LBB7_3
 ; CHECK-NEXT:  // %bb.1: // %land.lhs.true
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:c]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -400,8 +400,8 @@ define i32 @combine_gt_lt_n5() #0 {
 ; CHECK-NEXT:    b.ge .LBB7_6
 ; CHECK-NEXT:  // %bb.4: // %land.lhs.true3
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:d]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -453,8 +453,8 @@ define i32 @combine_lt_gt_n5() #0 {
 ; CHECK-NEXT:    b.ge .LBB8_3
 ; CHECK-NEXT:  // %bb.1: // %land.lhs.true
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:c]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -467,8 +467,8 @@ define i32 @combine_lt_gt_n5() #0 {
 ; CHECK-NEXT:    b.le .LBB8_6
 ; CHECK-NEXT:  // %bb.4: // %land.lhs.true3
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:d]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -607,8 +607,8 @@ define i32 @do_nothing_if_resultant_opcodes_would_differ() #0 {
 ; CHECK-NEXT:    b.gt .LBB10_7
 ; CHECK-NEXT:  // %bb.5: // %land.lhs.true
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:d]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -693,8 +693,8 @@ define i32 @do_nothing_if_compares_can_not_be_adjusted_to_each_other() #0 {
 ; CHECK-NEXT:    b.lt .LBB11_6
 ; CHECK-NEXT:  // %bb.4: // %land.lhs.true
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:d]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -893,8 +893,8 @@ define i32 @combine_gt_ge_sel(i64 %v, ptr %p) #0 {
 ; CHECK-NEXT:    b .LBB14_6
 ; CHECK-NEXT:  .LBB14_2: // %land.lhs.true
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:c]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -905,8 +905,8 @@ define i32 @combine_gt_ge_sel(i64 %v, ptr %p) #0 {
 ; CHECK-NEXT:    ret
 ; CHECK-NEXT:  .LBB14_4: // %land.lhs.true3
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:d]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -960,8 +960,8 @@ define i32 @combine_gt_ge_different_regs() #0 {
 ; CHECK-NEXT:    ldr w10, [x8]
 ; CHECK-NEXT:    adrp x8, :got:b
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
-; CHECK-NEXT:    cmp w10, #11
 ; CHECK-NEXT:    ldr w9, [x8]
+; CHECK-NEXT:    cmp w10, #11
 ; CHECK-NEXT:    b.lt .LBB15_3
 ; CHECK-NEXT:  // %bb.1: // %land.lhs.true
 ; CHECK-NEXT:    adrp x10, :got:c
@@ -1095,8 +1095,8 @@ define i32 @combine_ugt_ult_5() #0 {
 ; CHECK-NEXT:    b.ls .LBB17_3
 ; CHECK-NEXT:  // %bb.1: // %land.lhs.true
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:c]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -1109,8 +1109,8 @@ define i32 @combine_ugt_ult_5() #0 {
 ; CHECK-NEXT:    b.hs .LBB17_6
 ; CHECK-NEXT:  // %bb.4: // %land.lhs.true3
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:d]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -1227,8 +1227,8 @@ define i32 @combine_ult_ugt_5() #0 {
 ; CHECK-NEXT:    b.hs .LBB19_3
 ; CHECK-NEXT:  // %bb.1: // %land.lhs.true
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:c]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -1241,8 +1241,8 @@ define i32 @combine_ult_ugt_5() #0 {
 ; CHECK-NEXT:    b.ls .LBB19_6
 ; CHECK-NEXT:  // %bb.4: // %land.lhs.true3
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:d]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -1294,8 +1294,8 @@ define i32 @combine_ugt_ult_n5() #0 {
 ; CHECK-NEXT:    b.ls .LBB20_3
 ; CHECK-NEXT:  // %bb.1: // %land.lhs.true
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:c]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -1308,8 +1308,8 @@ define i32 @combine_ugt_ult_n5() #0 {
 ; CHECK-NEXT:    b.hs .LBB20_6
 ; CHECK-NEXT:  // %bb.4: // %land.lhs.true3
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:d]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -1361,8 +1361,8 @@ define i32 @combine_ult_ugt_n5() #0 {
 ; CHECK-NEXT:    b.hs .LBB21_3
 ; CHECK-NEXT:  // %bb.1: // %land.lhs.true
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:c]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -1375,8 +1375,8 @@ define i32 @combine_ult_ugt_n5() #0 {
 ; CHECK-NEXT:    b.ls .LBB21_6
 ; CHECK-NEXT:  // %bb.4: // %land.lhs.true3
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:d]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -1429,8 +1429,8 @@ define i32 @combine_ult_gt_n5() #0 {
 ; CHECK-NEXT:    b.hs .LBB22_3
 ; CHECK-NEXT:  // %bb.1: // %land.lhs.true
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:c
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:c]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]
@@ -1443,8 +1443,8 @@ define i32 @combine_ult_gt_n5() #0 {
 ; CHECK-NEXT:    b.le .LBB22_6
 ; CHECK-NEXT:  // %bb.4: // %land.lhs.true3
 ; CHECK-NEXT:    adrp x8, :got:b
-; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:b]
+; CHECK-NEXT:    adrp x9, :got:d
 ; CHECK-NEXT:    ldr x9, [x9, :got_lo12:d]
 ; CHECK-NEXT:    ldr w8, [x8]
 ; CHECK-NEXT:    ldr w9, [x9]

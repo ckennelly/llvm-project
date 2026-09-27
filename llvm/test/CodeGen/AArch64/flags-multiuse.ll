@@ -18,10 +18,10 @@ define i32 @test_multiflag(i32 %n, i32 %m, i32 %o) {
 ; CHECK-NEXT:    .cfi_offset w19, -8
 ; CHECK-NEXT:    .cfi_offset w20, -16
 ; CHECK-NEXT:    .cfi_offset w30, -32
-; CHECK-NEXT:    adrp x8, :got:var
 ; CHECK-NEXT:    cmp w0, w1
-; CHECK-NEXT:    mov w19, w1
+; CHECK-NEXT:    adrp x8, :got:var
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:var]
+; CHECK-NEXT:    mov w19, w1
 ; CHECK-NEXT:    cset w9, ne
 ; CHECK-NEXT:    mov w20, w0
 ; CHECK-NEXT:    str w9, [x8]

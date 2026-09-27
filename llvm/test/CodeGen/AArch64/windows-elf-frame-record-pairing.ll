@@ -20,8 +20,8 @@ define i32 @large_stack_requires_frame_record() "frame-pointer"="all" nounwind {
 ; CHECK-NEXT:    add x29, sp, #8
 ; CHECK-NEXT:    sub sp, sp, #512
 ; CHECK-NEXT:    adrp x8, :got:baz
-; CHECK-NEXT:    mov x0, sp
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:baz]
+; CHECK-NEXT:    mov x0, sp
 ; CHECK-NEXT:    blr x8
 ; CHECK-NEXT:    mov w0, wzr
 ; CHECK-NEXT:    add sp, sp, #512

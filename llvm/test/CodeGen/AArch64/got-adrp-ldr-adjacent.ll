@@ -17,12 +17,12 @@ define i64 @load4() {
 ; GENERIC-LABEL: load4:
 ; GENERIC:       // %bb.0:
 ; GENERIC-NEXT:    adrp x8, :got:g1
-; GENERIC-NEXT:    adrp x9, :got:g2
-; GENERIC-NEXT:    adrp x10, :got:g3
-; GENERIC-NEXT:    adrp x11, :got:g4
 ; GENERIC-NEXT:    ldr x8, [x8, :got_lo12:g1]
+; GENERIC-NEXT:    adrp x9, :got:g2
 ; GENERIC-NEXT:    ldr x9, [x9, :got_lo12:g2]
+; GENERIC-NEXT:    adrp x10, :got:g3
 ; GENERIC-NEXT:    ldr x10, [x10, :got_lo12:g3]
+; GENERIC-NEXT:    adrp x11, :got:g4
 ; GENERIC-NEXT:    ldr x11, [x11, :got_lo12:g4]
 ; GENERIC-NEXT:    ldr x8, [x8]
 ; GENERIC-NEXT:    ldr x9, [x9]
@@ -36,16 +36,16 @@ define i64 @load4() {
 ; V2-LABEL: load4:
 ; V2:       // %bb.0:
 ; V2-NEXT:    adrp x8, :got:g1
-; V2-NEXT:    adrp x9, :got:g2
-; V2-NEXT:    adrp x10, :got:g4
 ; V2-NEXT:    ldr x8, [x8, :got_lo12:g1]
 ; V2-NEXT:    ldr x8, [x8]
+; V2-NEXT:    adrp x9, :got:g2
 ; V2-NEXT:    ldr x9, [x9, :got_lo12:g2]
 ; V2-NEXT:    ldr x9, [x9]
 ; V2-NEXT:    add x8, x9, x8
 ; V2-NEXT:    adrp x9, :got:g3
 ; V2-NEXT:    ldr x9, [x9, :got_lo12:g3]
 ; V2-NEXT:    ldr x9, [x9]
+; V2-NEXT:    adrp x10, :got:g4
 ; V2-NEXT:    ldr x10, [x10, :got_lo12:g4]
 ; V2-NEXT:    ldr x10, [x10]
 ; V2-NEXT:    add x9, x9, x10
@@ -103,14 +103,14 @@ define void @store4(i64 %x) {
 ; GENERIC-LABEL: store4:
 ; GENERIC:       // %bb.0:
 ; GENERIC-NEXT:    adrp x8, :got:g1
-; GENERIC-NEXT:    adrp x9, :got:g2
-; GENERIC-NEXT:    adrp x10, :got:g3
 ; GENERIC-NEXT:    ldr x8, [x8, :got_lo12:g1]
+; GENERIC-NEXT:    adrp x9, :got:g2
 ; GENERIC-NEXT:    ldr x9, [x9, :got_lo12:g2]
+; GENERIC-NEXT:    adrp x10, :got:g3
 ; GENERIC-NEXT:    ldr x10, [x10, :got_lo12:g3]
 ; GENERIC-NEXT:    str x0, [x8]
-; GENERIC-NEXT:    adrp x8, :got:g4
 ; GENERIC-NEXT:    str x0, [x9]
+; GENERIC-NEXT:    adrp x8, :got:g4
 ; GENERIC-NEXT:    ldr x8, [x8, :got_lo12:g4]
 ; GENERIC-NEXT:    str x0, [x10]
 ; GENERIC-NEXT:    str x0, [x8]
@@ -174,20 +174,20 @@ define ptr @addr2(i1 %c) {
 ; GENERIC-LABEL: addr2:
 ; GENERIC:       // %bb.0:
 ; GENERIC-NEXT:    adrp x8, :got:g2
-; GENERIC-NEXT:    adrp x9, :got:g1
-; GENERIC-NEXT:    tst w0, #0x1
 ; GENERIC-NEXT:    ldr x8, [x8, :got_lo12:g2]
+; GENERIC-NEXT:    adrp x9, :got:g1
 ; GENERIC-NEXT:    ldr x9, [x9, :got_lo12:g1]
+; GENERIC-NEXT:    tst w0, #0x1
 ; GENERIC-NEXT:    csel x0, x9, x8, ne
 ; GENERIC-NEXT:    ret
 ;
 ; V2-LABEL: addr2:
 ; V2:       // %bb.0:
 ; V2-NEXT:    adrp x8, :got:g2
-; V2-NEXT:    adrp x9, :got:g1
-; V2-NEXT:    tst w0, #0x1
 ; V2-NEXT:    ldr x8, [x8, :got_lo12:g2]
+; V2-NEXT:    adrp x9, :got:g1
 ; V2-NEXT:    ldr x9, [x9, :got_lo12:g1]
+; V2-NEXT:    tst w0, #0x1
 ; V2-NEXT:    csel x0, x9, x8, ne
 ; V2-NEXT:    ret
 ;

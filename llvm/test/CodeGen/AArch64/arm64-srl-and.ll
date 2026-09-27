@@ -10,8 +10,8 @@ define i32 @srl_and()  {
 ; CHECK-SD-LABEL: srl_and:
 ; CHECK-SD:       // %bb.0: // %entry
 ; CHECK-SD-NEXT:    adrp x8, :got:g
-; CHECK-SD-NEXT:    mov w9, #50 // =0x32
 ; CHECK-SD-NEXT:    ldr x8, [x8, :got_lo12:g]
+; CHECK-SD-NEXT:    mov w9, #50 // =0x32
 ; CHECK-SD-NEXT:    ldrh w8, [x8]
 ; CHECK-SD-NEXT:    eor w8, w8, w9
 ; CHECK-SD-NEXT:    mov w9, #65535 // =0xffff
@@ -22,8 +22,8 @@ define i32 @srl_and()  {
 ; CHECK-GI-LABEL: srl_and:
 ; CHECK-GI:       // %bb.0: // %entry
 ; CHECK-GI-NEXT:    adrp x8, :got:g
-; CHECK-GI-NEXT:    mov w9, #50 // =0x32
 ; CHECK-GI-NEXT:    ldr x8, [x8, :got_lo12:g]
+; CHECK-GI-NEXT:    mov w9, #50 // =0x32
 ; CHECK-GI-NEXT:    ldrh w8, [x8]
 ; CHECK-GI-NEXT:    eor w8, w8, w9
 ; CHECK-GI-NEXT:    mov w9, #65535 // =0xffff

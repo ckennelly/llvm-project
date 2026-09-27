@@ -4,8 +4,10 @@
 # This testcase was obtained by looking at FileCheck.cpp and reducing it down via llvm-reduce 
 
 # Check that the LDRXui preserves the debug info by retaining the debug-instr-number 1 in _ZN4llvm12handleErrorsIJZNS_12consumeErrorENS_5ErrorEEUlRKNS_13ErrorInfoBaseEE_EEES1_S1_DpOT_
-# CHECK: $x8 = ADRP target-flags(aarch64-page, aarch64-got) @_ZNSt3__16vectorINS_10unique_ptrIN4llvm13ErrorInfoBaseENS_14default_deleteIS3_EEEENS_9allocatorIS6_EEE3endB8nn180100Ev
-# CHECK-NEXT: renamable $x8 = LDRXui killed $x8, target-flags(aarch64-pageoff, aarch64-got, aarch64-nc) @_ZNSt3__16vectorINS_10unique_ptrIN4llvm13ErrorInfoBaseENS_14default_deleteIS3_EEEENS_9allocatorIS6_EEE3endB8nn180100Ev, debug-instr-number 1
+# CHECK: BUNDLE implicit-def $x8, debug-instr-number 2 {
+# CHECK-NEXT: $x8 = ADRP target-flags(aarch64-page, aarch64-got) @_ZNSt3__16vectorINS_10unique_ptrIN4llvm13ErrorInfoBaseENS_14default_deleteIS3_EEEENS_9allocatorIS6_EEE3endB8nn180100Ev
+# CHECK-NEXT: renamable $x8 = LDRXui internal killed $x8, target-flags(aarch64-pageoff, aarch64-got, aarch64-nc) @_ZNSt3__16vectorINS_10unique_ptrIN4llvm13ErrorInfoBaseENS_14default_deleteIS3_EEEENS_9allocatorIS6_EEE3endB8nn180100Ev, debug-instr-number 1
+# CHECK-NEXT: }
 # CHECK-NEXT: DBG_INSTR_REF !9, !DIExpression(DW_OP_LLVM_arg, 0), dbg-instr-ref(1, 0), debug-location
 
 --- |

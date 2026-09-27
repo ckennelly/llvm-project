@@ -31,8 +31,10 @@ debugInstrRef:   true
 body:             |
   bb.0:
     ; CHECK-LABEL: name: f
-    ; CHECK: $x0 = ADRP target-flags(aarch64-page, aarch64-got) @g
-    ; CHECK-NEXT: renamable $x0 = LDRXui killed $x0, target-flags(aarch64-pageoff, aarch64-got, aarch64-nc) @g, debug-instr-number 1
+    ; CHECK: BUNDLE implicit-def $x0, debug-instr-number 2 {
+    ; CHECK-NEXT:   $x0 = ADRP target-flags(aarch64-page, aarch64-got) @g
+    ; CHECK-NEXT:   renamable $x0 = LDRXui internal killed $x0, target-flags(aarch64-pageoff, aarch64-got, aarch64-nc) @g, debug-instr-number 1
+    ; CHECK-NEXT: }
     ; CHECK-NEXT: DBG_INSTR_REF !9, !DIExpression(DW_OP_LLVM_arg, 0), dbg-instr-ref(1, 0), debug-location !8
     ; CHECK-NEXT: DBG_VALUE_LIST !9, !DIExpression(DW_OP_LLVM_arg, 0), $x0, debug-location !8
     ; CHECK-NEXT: RET undef $lr, implicit $x0, debug-location !8

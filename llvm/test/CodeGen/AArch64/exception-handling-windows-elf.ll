@@ -17,8 +17,8 @@ define void @bar() personality ptr @__gxx_personality_v0 {
 ; CHECK-NEXT:    .cfi_def_cfa_offset 32
 ; CHECK-NEXT:    .cfi_offset w30, -16
 ; CHECK-NEXT:    adrp x8, :got:foo
-; CHECK-NEXT:    mov w0, #42 // =0x2a
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:foo]
+; CHECK-NEXT:    mov w0, #42 // =0x2a
 ; CHECK-NEXT:    blr x8
 ; CHECK-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
 ; CHECK-NEXT:    add sp, sp, #32

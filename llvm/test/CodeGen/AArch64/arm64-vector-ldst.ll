@@ -53,10 +53,10 @@ define void @fct1_64x2(ptr nocapture %array, i64 %offset) nounwind ssp {
 ; CHECK-LABEL: fct1_64x2:
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    adrp x8, :got:globalArray64x2
-; CHECK-NEXT:    lsl x9, x1, #4
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:globalArray64x2]
-; CHECK-NEXT:    ldr q0, [x0, x9]
+; CHECK-NEXT:    lsl x9, x1, #4
 ; CHECK-NEXT:    ldr x8, [x8]
+; CHECK-NEXT:    ldr q0, [x0, x9]
 ; CHECK-NEXT:    str q0, [x8, x9]
 ; CHECK-NEXT:    ret
 entry:
@@ -90,10 +90,10 @@ define void @fct1_32x4(ptr nocapture %array, i64 %offset) nounwind ssp {
 ; CHECK-LABEL: fct1_32x4:
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    adrp x8, :got:globalArray32x4
-; CHECK-NEXT:    lsl x9, x1, #4
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:globalArray32x4]
-; CHECK-NEXT:    ldr q0, [x0, x9]
+; CHECK-NEXT:    lsl x9, x1, #4
 ; CHECK-NEXT:    ldr x8, [x8]
+; CHECK-NEXT:    ldr q0, [x0, x9]
 ; CHECK-NEXT:    str q0, [x8, x9]
 ; CHECK-NEXT:    ret
 entry:
@@ -127,10 +127,10 @@ define void @fct1_16x8(ptr nocapture %array, i64 %offset) nounwind ssp {
 ; CHECK-LABEL: fct1_16x8:
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    adrp x8, :got:globalArray16x8
-; CHECK-NEXT:    lsl x9, x1, #4
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:globalArray16x8]
-; CHECK-NEXT:    ldr q0, [x0, x9]
+; CHECK-NEXT:    lsl x9, x1, #4
 ; CHECK-NEXT:    ldr x8, [x8]
+; CHECK-NEXT:    ldr q0, [x0, x9]
 ; CHECK-NEXT:    str q0, [x8, x9]
 ; CHECK-NEXT:    ret
 entry:
@@ -164,10 +164,10 @@ define void @fct1_8x16(ptr nocapture %array, i64 %offset) nounwind ssp {
 ; CHECK-LABEL: fct1_8x16:
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    adrp x8, :got:globalArray8x16
-; CHECK-NEXT:    lsl x9, x1, #4
 ; CHECK-NEXT:    ldr x8, [x8, :got_lo12:globalArray8x16]
-; CHECK-NEXT:    ldr q0, [x0, x9]
+; CHECK-NEXT:    lsl x9, x1, #4
 ; CHECK-NEXT:    ldr x8, [x8]
+; CHECK-NEXT:    ldr q0, [x0, x9]
 ; CHECK-NEXT:    str q0, [x8, x9]
 ; CHECK-NEXT:    ret
 entry:

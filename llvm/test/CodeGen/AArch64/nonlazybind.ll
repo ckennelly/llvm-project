@@ -56,13 +56,13 @@ define void @test_laziness(ptr %a) nounwind {
 ; ELF:       // %bb.0:
 ; ELF-NEXT:    stp x30, x19, [sp, #-16]! // 16-byte Folded Spill
 ; ELF-NEXT:    adrp x8, :got:external
-; ELF-NEXT:    mov x19, x0
 ; ELF-NEXT:    ldr x8, [x8, :got_lo12:external]
+; ELF-NEXT:    mov x19, x0
 ; ELF-NEXT:    blr x8
 ; ELF-NEXT:    adrp x8, :got:memset
+; ELF-NEXT:    ldr x8, [x8, :got_lo12:memset]
 ; ELF-NEXT:    mov x0, x19
 ; ELF-NEXT:    mov w1, #1 // =0x1
-; ELF-NEXT:    ldr x8, [x8, :got_lo12:memset]
 ; ELF-NEXT:    mov w2, #1000 // =0x3e8
 ; ELF-NEXT:    blr x8
 ; ELF-NEXT:    ldp x30, x19, [sp], #16 // 16-byte Folded Reload

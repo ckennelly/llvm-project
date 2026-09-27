@@ -12,8 +12,8 @@ define void @se_memcpy(i64 noundef %n) "aarch64_pstate_sm_enabled" nounwind {
 ; CHECK-NEXT:    str x30, [sp, #-16]! // 8-byte Folded Spill
 ; CHECK-NEXT:    mov x2, x0
 ; CHECK-NEXT:    adrp x0, :got:dst
-; CHECK-NEXT:    adrp x1, :got:src
 ; CHECK-NEXT:    ldr x0, [x0, :got_lo12:dst]
+; CHECK-NEXT:    adrp x1, :got:src
 ; CHECK-NEXT:    ldr x1, [x1, :got_lo12:src]
 ; CHECK-NEXT:    bl __arm_sc_memcpy
 ; CHECK-NEXT:    ldr x30, [sp], #16 // 8-byte Folded Reload
@@ -24,12 +24,12 @@ define void @se_memcpy(i64 noundef %n) "aarch64_pstate_sm_enabled" nounwind {
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d15, d14, [sp, #-80]! // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d13, d12, [sp, #16] // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    mov x2, x0
-; CHECK-NO-SME-ROUTINES-NEXT:    adrp x0, :got:dst
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d11, d10, [sp, #32] // 16-byte Folded Spill
-; CHECK-NO-SME-ROUTINES-NEXT:    adrp x1, :got:src
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d9, d8, [sp, #48] // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    str x30, [sp, #64] // 8-byte Spill
+; CHECK-NO-SME-ROUTINES-NEXT:    adrp x0, :got:dst
 ; CHECK-NO-SME-ROUTINES-NEXT:    ldr x0, [x0, :got_lo12:dst]
+; CHECK-NO-SME-ROUTINES-NEXT:    adrp x1, :got:src
 ; CHECK-NO-SME-ROUTINES-NEXT:    ldr x1, [x1, :got_lo12:src]
 ; CHECK-NO-SME-ROUTINES-NEXT:    smstop sm
 ; CHECK-NO-SME-ROUTINES-NEXT:    bl memcpy
@@ -44,8 +44,8 @@ define void @se_memcpy(i64 noundef %n) "aarch64_pstate_sm_enabled" nounwind {
 ; CHECK-MOPS-LABEL: se_memcpy:
 ; CHECK-MOPS:       // %bb.0: // %entry
 ; CHECK-MOPS-NEXT:    adrp x8, :got:src
-; CHECK-MOPS-NEXT:    adrp x9, :got:dst
 ; CHECK-MOPS-NEXT:    ldr x8, [x8, :got_lo12:src]
+; CHECK-MOPS-NEXT:    adrp x9, :got:dst
 ; CHECK-MOPS-NEXT:    ldr x9, [x9, :got_lo12:dst]
 ; CHECK-MOPS-NEXT:    cpyfp [x9]!, [x8]!, x0!
 ; CHECK-MOPS-NEXT:    cpyfm [x9]!, [x8]!, x0!
@@ -61,8 +61,8 @@ define void @se_memset(i64 noundef %n) "aarch64_pstate_sm_enabled" nounwind {
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    str x30, [sp, #-16]! // 8-byte Folded Spill
 ; CHECK-NEXT:    mov x2, x0
-; CHECK-NEXT:    adrp x0, :got:dst
 ; CHECK-NEXT:    mov w1, #2 // =0x2
+; CHECK-NEXT:    adrp x0, :got:dst
 ; CHECK-NEXT:    ldr x0, [x0, :got_lo12:dst]
 ; CHECK-NEXT:    bl __arm_sc_memset
 ; CHECK-NEXT:    ldr x30, [sp], #16 // 8-byte Folded Reload
@@ -73,10 +73,10 @@ define void @se_memset(i64 noundef %n) "aarch64_pstate_sm_enabled" nounwind {
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d15, d14, [sp, #-80]! // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d13, d12, [sp, #16] // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    mov x2, x0
-; CHECK-NO-SME-ROUTINES-NEXT:    adrp x0, :got:dst
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d11, d10, [sp, #32] // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d9, d8, [sp, #48] // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    str x30, [sp, #64] // 8-byte Spill
+; CHECK-NO-SME-ROUTINES-NEXT:    adrp x0, :got:dst
 ; CHECK-NO-SME-ROUTINES-NEXT:    ldr x0, [x0, :got_lo12:dst]
 ; CHECK-NO-SME-ROUTINES-NEXT:    smstop sm
 ; CHECK-NO-SME-ROUTINES-NEXT:    mov w1, #2 // =0x2
@@ -92,8 +92,8 @@ define void @se_memset(i64 noundef %n) "aarch64_pstate_sm_enabled" nounwind {
 ; CHECK-MOPS-LABEL: se_memset:
 ; CHECK-MOPS:       // %bb.0: // %entry
 ; CHECK-MOPS-NEXT:    adrp x8, :got:dst
-; CHECK-MOPS-NEXT:    mov w9, #2 // =0x2
 ; CHECK-MOPS-NEXT:    ldr x8, [x8, :got_lo12:dst]
+; CHECK-MOPS-NEXT:    mov w9, #2 // =0x2
 ; CHECK-MOPS-NEXT:    setp [x8]!, x0!, x9
 ; CHECK-MOPS-NEXT:    setm [x8]!, x0!, x9
 ; CHECK-MOPS-NEXT:    sete [x8]!, x0!, x9
@@ -109,8 +109,8 @@ define void @se_memmove(i64 noundef %n) "aarch64_pstate_sm_enabled" nounwind {
 ; CHECK-NEXT:    str x30, [sp, #-16]! // 8-byte Folded Spill
 ; CHECK-NEXT:    mov x2, x0
 ; CHECK-NEXT:    adrp x0, :got:dst
-; CHECK-NEXT:    adrp x1, :got:src
 ; CHECK-NEXT:    ldr x0, [x0, :got_lo12:dst]
+; CHECK-NEXT:    adrp x1, :got:src
 ; CHECK-NEXT:    ldr x1, [x1, :got_lo12:src]
 ; CHECK-NEXT:    bl __arm_sc_memmove
 ; CHECK-NEXT:    ldr x30, [sp], #16 // 8-byte Folded Reload
@@ -121,12 +121,12 @@ define void @se_memmove(i64 noundef %n) "aarch64_pstate_sm_enabled" nounwind {
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d15, d14, [sp, #-80]! // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d13, d12, [sp, #16] // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    mov x2, x0
-; CHECK-NO-SME-ROUTINES-NEXT:    adrp x0, :got:dst
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d11, d10, [sp, #32] // 16-byte Folded Spill
-; CHECK-NO-SME-ROUTINES-NEXT:    adrp x1, :got:src
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d9, d8, [sp, #48] // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    str x30, [sp, #64] // 8-byte Spill
+; CHECK-NO-SME-ROUTINES-NEXT:    adrp x0, :got:dst
 ; CHECK-NO-SME-ROUTINES-NEXT:    ldr x0, [x0, :got_lo12:dst]
+; CHECK-NO-SME-ROUTINES-NEXT:    adrp x1, :got:src
 ; CHECK-NO-SME-ROUTINES-NEXT:    ldr x1, [x1, :got_lo12:src]
 ; CHECK-NO-SME-ROUTINES-NEXT:    smstop sm
 ; CHECK-NO-SME-ROUTINES-NEXT:    bl memmove
@@ -141,8 +141,8 @@ define void @se_memmove(i64 noundef %n) "aarch64_pstate_sm_enabled" nounwind {
 ; CHECK-MOPS-LABEL: se_memmove:
 ; CHECK-MOPS:       // %bb.0: // %entry
 ; CHECK-MOPS-NEXT:    adrp x8, :got:src
-; CHECK-MOPS-NEXT:    adrp x9, :got:dst
 ; CHECK-MOPS-NEXT:    ldr x8, [x8, :got_lo12:src]
+; CHECK-MOPS-NEXT:    adrp x9, :got:dst
 ; CHECK-MOPS-NEXT:    ldr x9, [x9, :got_lo12:dst]
 ; CHECK-MOPS-NEXT:    cpyp [x9]!, [x8]!, x0!
 ; CHECK-MOPS-NEXT:    cpym [x9]!, [x8]!, x0!
@@ -325,8 +325,8 @@ define void @sc_memcpy(i64 noundef %n) "aarch64_pstate_sm_compatible" nounwind {
 ; CHECK-NEXT:    str x30, [sp, #-16]! // 8-byte Folded Spill
 ; CHECK-NEXT:    mov x2, x0
 ; CHECK-NEXT:    adrp x0, :got:dst
-; CHECK-NEXT:    adrp x1, :got:src
 ; CHECK-NEXT:    ldr x0, [x0, :got_lo12:dst]
+; CHECK-NEXT:    adrp x1, :got:src
 ; CHECK-NEXT:    ldr x1, [x1, :got_lo12:src]
 ; CHECK-NEXT:    bl __arm_sc_memcpy
 ; CHECK-NEXT:    ldr x30, [sp], #16 // 8-byte Folded Reload
@@ -335,15 +335,15 @@ define void @sc_memcpy(i64 noundef %n) "aarch64_pstate_sm_compatible" nounwind {
 ; CHECK-NO-SME-ROUTINES-LABEL: sc_memcpy:
 ; CHECK-NO-SME-ROUTINES:       // %bb.0: // %entry
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d15, d14, [sp, #-80]! // 16-byte Folded Spill
-; CHECK-NO-SME-ROUTINES-NEXT:    mov x2, x0
-; CHECK-NO-SME-ROUTINES-NEXT:    adrp x0, :got:dst
-; CHECK-NO-SME-ROUTINES-NEXT:    adrp x1, :got:src
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d13, d12, [sp, #16] // 16-byte Folded Spill
+; CHECK-NO-SME-ROUTINES-NEXT:    mov x2, x0
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d11, d10, [sp, #32] // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp d9, d8, [sp, #48] // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    stp x30, x19, [sp, #64] // 16-byte Folded Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    mrs x19, SVCR
+; CHECK-NO-SME-ROUTINES-NEXT:    adrp x0, :got:dst
 ; CHECK-NO-SME-ROUTINES-NEXT:    ldr x0, [x0, :got_lo12:dst]
+; CHECK-NO-SME-ROUTINES-NEXT:    adrp x1, :got:src
 ; CHECK-NO-SME-ROUTINES-NEXT:    ldr x1, [x1, :got_lo12:src]
 ; CHECK-NO-SME-ROUTINES-NEXT:    tbz w19, #0, .LBB6_2
 ; CHECK-NO-SME-ROUTINES-NEXT:  // %bb.1: // %entry
@@ -364,8 +364,8 @@ define void @sc_memcpy(i64 noundef %n) "aarch64_pstate_sm_compatible" nounwind {
 ; CHECK-MOPS-LABEL: sc_memcpy:
 ; CHECK-MOPS:       // %bb.0: // %entry
 ; CHECK-MOPS-NEXT:    adrp x8, :got:src
-; CHECK-MOPS-NEXT:    adrp x9, :got:dst
 ; CHECK-MOPS-NEXT:    ldr x8, [x8, :got_lo12:src]
+; CHECK-MOPS-NEXT:    adrp x9, :got:dst
 ; CHECK-MOPS-NEXT:    ldr x9, [x9, :got_lo12:dst]
 ; CHECK-MOPS-NEXT:    cpyfp [x9]!, [x8]!, x0!
 ; CHECK-MOPS-NEXT:    cpyfm [x9]!, [x8]!, x0!
@@ -387,8 +387,8 @@ define void @sb_memcpy(i64 noundef %n) "aarch64_pstate_sm_body" nounwind {
 ; CHECK-NEXT:    str x30, [sp, #64] // 8-byte Spill
 ; CHECK-NEXT:    smstart sm
 ; CHECK-NEXT:    adrp x0, :got:dst
-; CHECK-NEXT:    adrp x1, :got:src
 ; CHECK-NEXT:    ldr x0, [x0, :got_lo12:dst]
+; CHECK-NEXT:    adrp x1, :got:src
 ; CHECK-NEXT:    ldr x1, [x1, :got_lo12:src]
 ; CHECK-NEXT:    bl __arm_sc_memcpy
 ; CHECK-NEXT:    smstop sm
@@ -409,8 +409,8 @@ define void @sb_memcpy(i64 noundef %n) "aarch64_pstate_sm_body" nounwind {
 ; CHECK-NO-SME-ROUTINES-NEXT:    str x30, [sp, #64] // 8-byte Spill
 ; CHECK-NO-SME-ROUTINES-NEXT:    smstart sm
 ; CHECK-NO-SME-ROUTINES-NEXT:    adrp x0, :got:dst
-; CHECK-NO-SME-ROUTINES-NEXT:    adrp x1, :got:src
 ; CHECK-NO-SME-ROUTINES-NEXT:    ldr x0, [x0, :got_lo12:dst]
+; CHECK-NO-SME-ROUTINES-NEXT:    adrp x1, :got:src
 ; CHECK-NO-SME-ROUTINES-NEXT:    ldr x1, [x1, :got_lo12:src]
 ; CHECK-NO-SME-ROUTINES-NEXT:    smstop sm
 ; CHECK-NO-SME-ROUTINES-NEXT:    bl memcpy
@@ -429,8 +429,8 @@ define void @sb_memcpy(i64 noundef %n) "aarch64_pstate_sm_body" nounwind {
 ; CHECK-MOPS-NEXT:    stp d9, d8, [sp, #48] // 16-byte Folded Spill
 ; CHECK-MOPS-NEXT:    smstart sm
 ; CHECK-MOPS-NEXT:    adrp x8, :got:src
-; CHECK-MOPS-NEXT:    adrp x9, :got:dst
 ; CHECK-MOPS-NEXT:    ldr x8, [x8, :got_lo12:src]
+; CHECK-MOPS-NEXT:    adrp x9, :got:dst
 ; CHECK-MOPS-NEXT:    ldr x9, [x9, :got_lo12:dst]
 ; CHECK-MOPS-NEXT:    cpyfp [x9]!, [x8]!, x0!
 ; CHECK-MOPS-NEXT:    cpyfm [x9]!, [x8]!, x0!

@@ -14,9 +14,9 @@ define i64 @bfis_in_loop_zero() {
 ; CHECK-LABEL: bfis_in_loop_zero:
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    adrp x9, :got:global
+; CHECK-NEXT:    ldr x9, [x9, :got_lo12:global]
 ; CHECK-NEXT:    mov x0, xzr
 ; CHECK-NEXT:    mov w8, wzr
-; CHECK-NEXT:    ldr x9, [x9, :got_lo12:global]
 ; CHECK-NEXT:    mov w10, #65536 // =0x10000
 ; CHECK-NEXT:    ldr x9, [x9]
 ; CHECK-NEXT:  .LBB0_1: // %midblock
@@ -82,9 +82,9 @@ define i64 @bfis_in_loop_undef() {
 ; CHECK-LABEL: bfis_in_loop_undef:
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    adrp x9, :got:global
+; CHECK-NEXT:    ldr x9, [x9, :got_lo12:global]
 ; CHECK-NEXT:    mov w8, wzr
 ; CHECK-NEXT:    // implicit-def: $x0
-; CHECK-NEXT:    ldr x9, [x9, :got_lo12:global]
 ; CHECK-NEXT:    ldr x10, [x9]
 ; CHECK-NEXT:    mov w9, #65536 // =0x10000
 ; CHECK-NEXT:  .LBB1_1: // %midblock

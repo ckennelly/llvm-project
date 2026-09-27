@@ -20,8 +20,8 @@
 ;; Check we don't create relocations referencing a section symbol for sanitize_memtag globals.
 ; CHECK-RELOCS:      Relocation section '.rela.text' {{.*}} contains 4 entries:
 ; CHECK-RELOCS:      R_AARCH64_ADR_GOT_PAGE     {{.*}} internal_four + 0
-; CHECK-RELOCS-NEXT: R_AARCH64_ADR_GOT_PAGE     {{.*}} four + 0
 ; CHECK-RELOCS-NEXT: R_AARCH64_LD64_GOT_LO12_NC {{.*}} internal_four + 0
+; CHECK-RELOCS-NEXT: R_AARCH64_ADR_GOT_PAGE     {{.*}} four + 0
 ; CHECK-RELOCS-NEXT: R_AARCH64_LD64_GOT_LO12_NC {{.*}} four + 0
 
 ; CHECK-RELOCS:     Relocation section '.rela.memtag.globals.static' {{.*}} contains 4 entries
