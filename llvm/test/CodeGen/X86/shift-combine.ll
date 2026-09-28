@@ -226,7 +226,7 @@ define <4 x i32> @ashr_add_shl_v4i8(<4 x i32> %r) nounwind {
 ; X64-LABEL: ashr_add_shl_v4i8:
 ; X64:       # %bb.0:
 ; X64-NEXT:    pslld $24, %xmm0
-; X64-NEXT:    paddd {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+; X64-NEXT:    paddd {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0 # [16777216,16777216,16777216,16777216]
 ; X64-NEXT:    psrad $24, %xmm0
 ; X64-NEXT:    retq
   %conv = shl <4 x i32> %r, <i32 24, i32 24, i32 24, i32 24>
@@ -827,4 +827,77 @@ define void @combineShiftOfShiftedLogic(i128 %a1, i32 %a2, ptr %p) {
   %res = shl i192 %or, 160
   store i192 %res, ptr %p, align 8
   ret void
+}
+; The exact flag must survive SimplifyDemandedBits' srl half-width narrowing
+; so the (shl (srl exact X, 3), 4) built for the 16-byte-element GEP folds to
+; scale-2 addressing instead of an AND mask. This is the protobuf
+; TcParser::TagDispatch pattern: idx = tag & mask, assume((idx&7)==0) [gives
+; lshr exact in IR], table->fast_entry(idx >> 3) with 16-byte entries.
+;
+; Before the fix (X64):     after the fix (X64):
+;   andl %edx, %esi           andl %edx, %esi
+;   andl $248, %esi           movq (%rdi,%rsi,2), %rax
+;   movq (%rdi,%rsi,2), %rax  xorq 8(%rdi,%rsi,2), %rax
+;   ...
+define i64 @lshr_exact_zext_narrowing_no_mask(ptr %base, i16 %tag, i8 %maskbyte) {
+; X86-LABEL: lshr_exact_zext_narrowing_no_mask:
+; X86:       # %bb.0:
+; X86-NEXT:    pushl %esi
+; X86-NEXT:    .cfi_def_cfa_offset 8
+; X86-NEXT:    .cfi_offset %esi, -8
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
+; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %esi
+; X86-NEXT:    andw {{[0-9]+}}(%esp), %si
+; X86-NEXT:    andl $248, %esi
+; X86-NEXT:    movl (%ecx,%esi,2), %eax
+; X86-NEXT:    movl 4(%ecx,%esi,2), %edx
+; X86-NEXT:    xorl 8(%ecx,%esi,2), %eax
+; X86-NEXT:    xorl 12(%ecx,%esi,2), %edx
+; X86-NEXT:    popl %esi
+; X86-NEXT:    .cfi_def_cfa_offset 4
+; X86-NEXT:    retl
+;
+; X64-LABEL: lshr_exact_zext_narrowing_no_mask:
+; X64:       # %bb.0:
+; X64-NEXT:    # kill: def $esi killed $esi def $rsi
+; X64-NEXT:    andl %edx, %esi
+; X64-NEXT:    andl $248, %esi
+; X64-NEXT:    movq (%rdi,%rsi,2), %rax
+; X64-NEXT:    xorq 8(%rdi,%rsi,2), %rax
+; X64-NEXT:    retq
+  %mask = zext i8 %maskbyte to i16
+  %and = and i16 %tag, %mask
+  %idx = zext nneg i16 %and to i64
+  %shr = lshr exact i64 %idx, 3
+  %gep0 = getelementptr {i64, i64}, ptr %base, i64 %shr
+  %gep1 = getelementptr {i64, i64}, ptr %base, i64 %shr, i32 1
+  %a = load i64, ptr %gep0, align 8
+  %b = load i64, ptr %gep1, align 8
+  %r = xor i64 %a, %b
+  ret i64 %r
+}
+
+; Narrower distilled form (matches sim_narrowed_exact evidence): the exact
+; i32 srl behind a zext must still fold away against the x4-scaled GEP shl.
+define i64 @lshr_exact_i64_zext16_scale16(ptr %base, i16 %x16) {
+; X86-LABEL: lshr_exact_i64_zext16_scale16:
+; X86:       # %bb.0:
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
+; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %edx
+; X86-NEXT:    andl $-8, %edx
+; X86-NEXT:    movl (%ecx,%edx,2), %eax
+; X86-NEXT:    movl 4(%ecx,%edx,2), %edx
+; X86-NEXT:    retl
+;
+; X64-LABEL: lshr_exact_i64_zext16_scale16:
+; X64:       # %bb.0:
+; X64-NEXT:    # kill: def $esi killed $esi def $rsi
+; X64-NEXT:    andl $65528, %esi # imm = 0xFFF8
+; X64-NEXT:    movq (%rdi,%rsi,2), %rax
+; X64-NEXT:    retq
+  %idx = zext nneg i16 %x16 to i64
+  %shr = lshr exact i64 %idx, 3
+  %gep = getelementptr i128, ptr %base, i64 %shr
+  %v = load i64, ptr %gep, align 8
+  ret i64 %v
 }
