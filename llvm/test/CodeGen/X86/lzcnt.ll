@@ -39,17 +39,26 @@ define i8 @t1(i8 %x) nounwind  {
 define i16 @t2(i16 %x) nounwind  {
 ; X86-LABEL: t2:
 ; X86:       # %bb.0:
-; X86-NEXT:    lzcntw {{[0-9]+}}(%esp), %ax
+; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
+; X86-NEXT:    lzcntl %eax, %eax
+; X86-NEXT:    addl $-16, %eax
+; X86-NEXT:    # kill: def $ax killed $ax killed $eax
 ; X86-NEXT:    retl
 ;
 ; X32-LABEL: t2:
 ; X32:       # %bb.0:
-; X32-NEXT:    lzcntw %di, %ax
+; X32-NEXT:    movzwl %di, %eax
+; X32-NEXT:    lzcntl %eax, %eax
+; X32-NEXT:    addl $-16, %eax
+; X32-NEXT:    # kill: def $ax killed $ax killed $eax
 ; X32-NEXT:    retq
 ;
 ; X64-LABEL: t2:
 ; X64:       # %bb.0:
-; X64-NEXT:    lzcntw %di, %ax
+; X64-NEXT:    movzwl %di, %eax
+; X64-NEXT:    lzcntl %eax, %eax
+; X64-NEXT:    addl $-16, %eax
+; X64-NEXT:    # kill: def $ax killed $ax killed $eax
 ; X64-NEXT:    retq
 	%tmp = tail call i16 @llvm.ctlz.i16( i16 %x, i1 false )
 	ret i16 %tmp
@@ -132,17 +141,24 @@ define i8 @t5(i8 %x) nounwind  {
 define i16 @t6(i16 %x) nounwind  {
 ; X86-LABEL: t6:
 ; X86:       # %bb.0:
-; X86-NEXT:    lzcntw {{[0-9]+}}(%esp), %ax
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
+; X86-NEXT:    shll $16, %eax
+; X86-NEXT:    lzcntl %eax, %eax
+; X86-NEXT:    # kill: def $ax killed $ax killed $eax
 ; X86-NEXT:    retl
 ;
 ; X32-LABEL: t6:
 ; X32:       # %bb.0:
-; X32-NEXT:    lzcntw %di, %ax
+; X32-NEXT:    shll $16, %edi
+; X32-NEXT:    lzcntl %edi, %eax
+; X32-NEXT:    # kill: def $ax killed $ax killed $eax
 ; X32-NEXT:    retq
 ;
 ; X64-LABEL: t6:
 ; X64:       # %bb.0:
-; X64-NEXT:    lzcntw %di, %ax
+; X64-NEXT:    shll $16, %edi
+; X64-NEXT:    lzcntl %edi, %eax
+; X64-NEXT:    # kill: def $ax killed $ax killed $eax
 ; X64-NEXT:    retq
 	%tmp = tail call i16 @llvm.ctlz.i16( i16 %x, i1 true )
 	ret i16 %tmp

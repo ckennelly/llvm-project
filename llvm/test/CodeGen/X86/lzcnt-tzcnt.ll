@@ -10,7 +10,10 @@
 define i16 @test1_ctlz(i16 %v) {
 ; CHECK-LABEL: test1_ctlz:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    lzcntw %di, %ax
+; CHECK-NEXT:    movzwl %di, %eax
+; CHECK-NEXT:    lzcntl %eax, %eax
+; CHECK-NEXT:    addl $-16, %eax
+; CHECK-NEXT:    # kill: def $ax killed $ax killed $eax
 ; CHECK-NEXT:    retq
   %cnt = tail call i16 @llvm.ctlz.i16(i16 %v, i1 true)
   %tobool = icmp eq i16 %v, 0
@@ -46,7 +49,10 @@ define i64 @test3_ctlz(i64 %v) {
 define i16 @test4_ctlz(i16 %v) {
 ; CHECK-LABEL: test4_ctlz:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    lzcntw %di, %ax
+; CHECK-NEXT:    movzwl %di, %eax
+; CHECK-NEXT:    lzcntl %eax, %eax
+; CHECK-NEXT:    addl $-16, %eax
+; CHECK-NEXT:    # kill: def $ax killed $ax killed $eax
 ; CHECK-NEXT:    retq
   %cnt = tail call i16 @llvm.ctlz.i16(i16 %v, i1 true)
   %tobool = icmp eq i16 0, %v
@@ -82,7 +88,10 @@ define i64 @test6_ctlz(i64 %v) {
 define i16 @test10_ctlz(ptr %ptr) {
 ; CHECK-LABEL: test10_ctlz:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    lzcntw (%rdi), %ax
+; CHECK-NEXT:    movzwl (%rdi), %eax
+; CHECK-NEXT:    lzcntl %eax, %eax
+; CHECK-NEXT:    addl $-16, %eax
+; CHECK-NEXT:    # kill: def $ax killed $ax killed $eax
 ; CHECK-NEXT:    retq
   %v = load i16, ptr %ptr
   %cnt = tail call i16 @llvm.ctlz.i16(i16 %v, i1 true)
@@ -121,7 +130,10 @@ define i64 @test12_ctlz(ptr %ptr) {
 define i16 @test13_ctlz(ptr %ptr) {
 ; CHECK-LABEL: test13_ctlz:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    lzcntw (%rdi), %ax
+; CHECK-NEXT:    movzwl (%rdi), %eax
+; CHECK-NEXT:    lzcntl %eax, %eax
+; CHECK-NEXT:    addl $-16, %eax
+; CHECK-NEXT:    # kill: def $ax killed $ax killed $eax
 ; CHECK-NEXT:    retq
   %v = load i16, ptr %ptr
   %cnt = tail call i16 @llvm.ctlz.i16(i16 %v, i1 true)
@@ -320,7 +332,10 @@ define i64 @test15_cttz(ptr %ptr) {
 define i16 @test4b_ctlz(i16 %v) {
 ; CHECK-LABEL: test4b_ctlz:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    lzcntw %di, %ax
+; CHECK-NEXT:    movzwl %di, %eax
+; CHECK-NEXT:    lzcntl %eax, %eax
+; CHECK-NEXT:    addl $-16, %eax
+; CHECK-NEXT:    # kill: def $ax killed $ax killed $eax
 ; CHECK-NEXT:    retq
   %cnt = tail call i16 @llvm.ctlz.i16(i16 %v, i1 true)
   %tobool = icmp ne i16 %v, 0

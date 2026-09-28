@@ -8,7 +8,10 @@
 define i16 @ctlz_i16(i16 %x) {
 ; CHECK-LABEL: ctlz_i16:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    lzcntw %di, %ax
+; CHECK-NEXT:    movzwl %di, %eax
+; CHECK-NEXT:    lzcntl %eax, %eax
+; CHECK-NEXT:    addl $-16, %eax
+; CHECK-NEXT:    # kill: def $ax killed $ax killed $eax
 ; CHECK-NEXT:    retq
   %r = call i16 @llvm.ctlz.i16(i16 %x, i1 false)
   ret i16 %r
@@ -17,7 +20,9 @@ define i16 @ctlz_i16(i16 %x) {
 define i16 @ctlz_i16_zero_poison(i16 %x) {
 ; CHECK-LABEL: ctlz_i16_zero_poison:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    lzcntw %di, %ax
+; CHECK-NEXT:    shll $16, %edi
+; CHECK-NEXT:    lzcntl %edi, %eax
+; CHECK-NEXT:    # kill: def $ax killed $ax killed $eax
 ; CHECK-NEXT:    retq
   %r = call i16 @llvm.ctlz.i16(i16 %x, i1 true)
   ret i16 %r
@@ -28,9 +33,9 @@ define i16 @ctlz_i16_zero_poison(i16 %x) {
 define i32 @bit_width_u16(ptr %p) {
 ; CHECK-LABEL: bit_width_u16:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    lzcntw (%rdi), %ax
-; CHECK-NEXT:    movzwl %ax, %ecx
-; CHECK-NEXT:    movl $16, %eax
+; CHECK-NEXT:    movzwl (%rdi), %eax
+; CHECK-NEXT:    lzcntl %eax, %ecx
+; CHECK-NEXT:    movl $32, %eax
 ; CHECK-NEXT:    subl %ecx, %eax
 ; CHECK-NEXT:    retq
   %x = load i16, ptr %p, align 2
