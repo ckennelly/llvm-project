@@ -2154,8 +2154,13 @@ bool TargetLowering::SimplifyDemandedBits(
           SDValue NewOp = TLO.DAG.getNode(ISD::TRUNCATE, dl, HalfVT, Op0);
           SDValue NewShiftAmt =
               TLO.DAG.getShiftAmountConstant(ShAmt, HalfVT, dl);
-          SDValue NewShift =
-              TLO.DAG.getNode(ISD::SRL, dl, HalfVT, NewOp, NewShiftAmt);
+          // The bits shifted out by the narrow SRL are the same low bits the
+          // wide SRL shifted out (truncation keeps them), so exactness is
+          // preserved.
+          SDNodeFlags NewFlags;
+          NewFlags.setExact(Op->getFlags().hasExact());
+          SDValue NewShift = TLO.DAG.getNode(ISD::SRL, dl, HalfVT, NewOp,
+                                             NewShiftAmt, NewFlags);
           return TLO.CombineTo(
               Op, TLO.DAG.getNode(ISD::ZERO_EXTEND, dl, VT, NewShift));
         }

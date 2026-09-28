@@ -859,11 +859,10 @@ define i64 @lshr_exact_zext_narrowing_no_mask(ptr %base, i16 %tag, i8 %maskbyte)
 ;
 ; X64-LABEL: lshr_exact_zext_narrowing_no_mask:
 ; X64:       # %bb.0:
-; X64-NEXT:    # kill: def $esi killed $esi def $rsi
 ; X64-NEXT:    andl %edx, %esi
-; X64-NEXT:    andl $248, %esi
-; X64-NEXT:    movq (%rdi,%rsi,2), %rax
-; X64-NEXT:    xorq 8(%rdi,%rsi,2), %rax
+; X64-NEXT:    movzbl %sil, %ecx
+; X64-NEXT:    movq (%rdi,%rcx,2), %rax
+; X64-NEXT:    xorq 8(%rdi,%rcx,2), %rax
 ; X64-NEXT:    retq
   %mask = zext i8 %maskbyte to i16
   %and = and i16 %tag, %mask
@@ -891,9 +890,8 @@ define i64 @lshr_exact_i64_zext16_scale16(ptr %base, i16 %x16) {
 ;
 ; X64-LABEL: lshr_exact_i64_zext16_scale16:
 ; X64:       # %bb.0:
-; X64-NEXT:    # kill: def $esi killed $esi def $rsi
-; X64-NEXT:    andl $65528, %esi # imm = 0xFFF8
-; X64-NEXT:    movq (%rdi,%rsi,2), %rax
+; X64-NEXT:    movzwl %si, %eax
+; X64-NEXT:    movq (%rdi,%rax,2), %rax
 ; X64-NEXT:    retq
   %idx = zext nneg i16 %x16 to i64
   %shr = lshr exact i64 %idx, 3
