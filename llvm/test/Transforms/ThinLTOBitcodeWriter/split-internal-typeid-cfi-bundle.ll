@@ -16,9 +16,12 @@ define hidden void @f() !type !0 {
 @fptr = global ptr @f
 
 ; M0: define void @call(
-define void @call(ptr %p) {
+define void @call(ptr %p, ptr %vtable) {
   ; M0: call void %p() [ "cfi"(metadata !"[[ID:1\.[0-9a-f]+]]") ]
   call void %p() [ "cfi"(metadata !1) ]
+  ; The checked pointer of a virtual call's bundle is kept.
+  ; M0: call void %p() [ "cfi"(metadata !"[[ID]]", ptr %vtable) ]
+  call void %p() [ "cfi"(metadata !1, ptr %vtable) ]
   ret void
 }
 

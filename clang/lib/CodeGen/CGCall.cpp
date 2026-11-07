@@ -5711,10 +5711,6 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
 
   assert(Callee.isOrdinary() || Callee.isVirtual());
 
-  // Take the pending cfi-icall bundle type id, if any, before anything else
-  // can be emitted.
-  llvm::Metadata *CFIICallTypeId = std::exchange(CFIICallBundleTypeId, nullptr);
-
   // Handle struct-return functions by passing a pointer to the
   // location that we would like to return into.
   QualType RetTy = CallInfo.getReturnType();
@@ -6228,6 +6224,10 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   const CGCallee &ConcreteCallee = Callee.prepareConcreteCallee(*this);
   llvm::Value *CalleePtr = ConcreteCallee.getFunctionPointer();
 
+  // Take the pending cfi bundle, if any: a function-pointer call's was set
+  // before EmitCall, a virtual call's by prepareConcreteCallee just now.
+  PendingCFIBundle CFI = std::exchange(CFIBundle, PendingCFIBundle());
+
   // If we're using inalloca, set up that argument.
   if (ArgMemory.isValid()) {
     llvm::Value *Arg = ArgMemory.getPointer();
@@ -6391,9 +6391,13 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
       !isa_and_nonnull<FunctionDecl>(TargetDecl))
     EmitKCFIOperandBundle(ConcreteCallee, BundleList);
 
-  if (CFIICallTypeId)
-    BundleList.emplace_back(
-        "cfi", llvm::MetadataAsValue::get(getLLVMContext(), CFIICallTypeId));
+  if (CFI.TypeId) {
+    SmallVector<llvm::Value *, 2> Inputs = {
+        llvm::MetadataAsValue::get(getLLVMContext(), CFI.TypeId)};
+    if (CFI.Checked)
+      Inputs.push_back(CFI.Checked);
+    BundleList.emplace_back("cfi", Inputs);
+  }
 
   // Add the pointer-authentication bundle.
   EmitPointerAuthOperandBundle(ConcreteCallee.getPointerAuthInfo(), BundleList);

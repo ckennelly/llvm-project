@@ -102,6 +102,54 @@ define void @call_indirect_prof(ptr %p) {
 
 !0 = !{i32 0, !"typeid1"}
 !1 = !{!"VP", i32 0, i64 100, i64 -2012135647395072713, i64 100}
+
+; A virtual call: the bundle names the vtable, so that is what gets tested.
+@_ZTV1A = hidden constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @A_f] }, !type !2
+
+define hidden void @A_f(ptr %this) {
+; CHECK-LABEL: define hidden void @A_f(
+; CHECK-SAME: ptr [[THIS:%.*]]) {
+; CHECK-NEXT:    ret void
+;
+  ret void
+}
+
+define void @vcall(ptr %obj) {
+; CHECK-LABEL: define void @vcall(
+; CHECK-SAME: ptr [[OBJ:%.*]]) {
+; CHECK-NEXT:    [[VTABLE:%.*]] = load ptr, ptr [[OBJ]], align 8
+; CHECK-NEXT:    [[VFN:%.*]] = load ptr, ptr [[VTABLE]], align 8
+; CHECK-NEXT:    [[TMP1:%.*]] = ptrtoint ptr [[VTABLE]] to i64
+; CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], ptrtoint (ptr getelementptr (i8, ptr @[[GLOB0:[0-9]+]], i64 16) to i64)
+; CHECK-NEXT:    br i1 [[TMP2]], label %[[BB4:.*]], label %[[BB3:.*]], !prof [[PROF1]]
+; CHECK:       [[BB3]]:
+; CHECK-NEXT:    call void @llvm.ubsantrap(i8 2) #[[ATTR3]]
+; CHECK-NEXT:    unreachable
+; CHECK:       [[BB4]]:
+; CHECK-NEXT:    call void [[VFN]](ptr [[OBJ]])
+; CHECK-NEXT:    ret void
+;
+  %vtable = load ptr, ptr %obj
+  %vfn = load ptr, ptr %vtable
+  call void %vfn(ptr %obj) [ "cfi"(metadata !"_ZTS1A", ptr %vtable) ]
+  ret void
+}
+
+; Once promoted to a direct call, the vcall bundle is dropped too: the target
+; can no longer be redirected.
+define void @vcall_promoted(ptr %obj) {
+; CHECK-LABEL: define void @vcall_promoted(
+; CHECK-SAME: ptr [[OBJ:%.*]]) {
+; CHECK-NEXT:    [[VTABLE:%.*]] = load ptr, ptr [[OBJ]], align 8
+; CHECK-NEXT:    call void @A_f(ptr [[OBJ]])
+; CHECK-NEXT:    ret void
+;
+  %vtable = load ptr, ptr %obj
+  call void @A_f(ptr %obj) [ "cfi"(metadata !"_ZTS1A", ptr %vtable) ]
+  ret void
+}
+
+!2 = !{i64 16, !"_ZTS1A"}
 ;.
 ; CHECK: [[META0]] = !{i32 0, !"typeid1"}
 ; CHECK: [[PROF1]] = !{!"branch_weights", i32 1048575, i32 1}

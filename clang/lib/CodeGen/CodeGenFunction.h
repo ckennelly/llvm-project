@@ -368,10 +368,16 @@ public:
   /// CurCodeDecl - This is the inner-most code context, which includes blocks.
   const Decl *CurCodeDecl = nullptr;
   const CGFunctionInfo *CurFnInfo = nullptr;
-  /// Type identifier for a "cfi" operand bundle that the next EmitCall should
-  /// attach to the call it emits, set by the function-pointer call emission
-  /// when -fsanitize=cfi-icall checks are emitted as operand bundles.
-  llvm::Metadata *CFIICallBundleTypeId = nullptr;
+  /// A "cfi" operand bundle that the next EmitCall should attach to the call
+  /// it emits, when -fsanitize=cfi-icall/cfi-vcall checks are emitted as
+  /// operand bundles. The function-pointer call emission sets TypeId alone (the
+  /// checked value is the callee); the virtual call emission also sets Checked
+  /// to the vtable pointer.
+  struct PendingCFIBundle {
+    llvm::Metadata *TypeId = nullptr;
+    llvm::Value *Checked = nullptr;
+  };
+  PendingCFIBundle CFIBundle;
   QualType FnRetTy;
   llvm::Function *CurFn = nullptr;
 
@@ -2643,6 +2649,13 @@ public:
   /// RD using llvm.type.test.
   void EmitVTablePtrCheck(const CXXRecordDecl *RD, llvm::Value *VTable,
                           CFITypeCheckKind TCK, SourceLocation Loc);
+
+  /// Express the vcall CFI check of a virtual call through VTable as a "cfi"
+  /// operand bundle on the call that EmitCall is about to emit. Returns false
+  /// when the check is not expressible that way, so that the caller emits it
+  /// as control flow instead.
+  bool EmitVTablePtrCheckAsCFIBundle(const CXXRecordDecl *RD,
+                                     llvm::Value *VTable);
 
   /// If whole-program virtual table optimization is enabled, emit an assumption
   /// that VTable is a member of RD's type identifier. Or, if vptr CFI is

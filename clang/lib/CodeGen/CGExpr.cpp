@@ -7341,10 +7341,10 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType,
   llvm::CallBase *LocalCallOrInvoke = nullptr;
   // Set only now, after the arguments have been evaluated, so that a nested
   // call in an argument cannot pick the bundle up instead.
-  CFIICallBundleTypeId = CFIBundleTypeId;
+  CFIBundle.TypeId = CFIBundleTypeId;
   RValue Call = EmitCall(FnInfo, Callee, ReturnValue, Args, &LocalCallOrInvoke,
                          E == MustTailCall, E->getExprLoc());
-  assert(!CFIICallBundleTypeId && "cfi bundle type id was not consumed");
+  assert(!CFIBundle.TypeId && "cfi bundle was not consumed");
 
   if (auto *CalleeDecl = dyn_cast_or_null<FunctionDecl>(TargetDecl)) {
     if (CalleeDecl->hasAttr<RestrictAttr>() ||

@@ -173,12 +173,14 @@ void promoteTypeIds(Module &M, StringRef ModuleId) {
         std::string NewName = (Twine(LocalToGlobal.size()) + ModuleId).str();
         GlobalMD = MDString::get(M.getContext(), NewName);
       }
-      Value *NewTypeId = MetadataAsValue::get(M.getContext(), GlobalMD);
+      SmallVector<Value *, 2> Inputs(Bundle->Inputs.begin(),
+                                     Bundle->Inputs.end());
+      Inputs[0] = MetadataAsValue::get(M.getContext(), GlobalMD);
       SmallVector<OperandBundleDef, 2> Bundles;
       CB->getOperandBundlesAsDefs(Bundles);
       for (OperandBundleDef &B : Bundles)
         if (B.getTag() == "cfi")
-          B = OperandBundleDef("cfi", ArrayRef<Value *>(NewTypeId));
+          B = OperandBundleDef("cfi", Inputs);
       CallBase *NewCB = CallBase::Create(CB, Bundles, CB->getIterator());
       NewCB->copyMetadata(*CB);
       CB->replaceAllUsesWith(NewCB);

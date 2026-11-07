@@ -2,6 +2,7 @@
 ; RUN: not opt -passes=verify -disable-output %t/two.ll 2>&1 | FileCheck %s --check-prefix=TWO
 ; RUN: not opt -passes=verify -disable-output %t/count.ll 2>&1 | FileCheck %s --check-prefix=COUNT
 ; RUN: not opt -passes=verify -disable-output %t/operand.ll 2>&1 | FileCheck %s --check-prefix=OPERAND
+; RUN: not opt -passes=verify -disable-output %t/checked.ll 2>&1 | FileCheck %s --check-prefix=CHECKED
 ; RUN: opt -passes=verify -disable-output %t/ok.ll
 
 ;--- two.ll
@@ -12,9 +13,9 @@ define void @f(ptr %p) {
 }
 
 ;--- count.ll
-; COUNT: Expected exactly one cfi bundle operand
+; COUNT: Expected one or two cfi bundle operands
 define void @f(ptr %p) {
-  call void %p() [ "cfi"(metadata !"t", metadata !"u") ]
+  call void %p() [ "cfi"(metadata !"t", ptr %p, ptr %p) ]
   ret void
 }
 
@@ -25,12 +26,21 @@ define void @f(ptr %p) {
   ret void
 }
 
+;--- checked.ll
+; CHECKED: Second cfi bundle operand must be a pointer
+define void @f(ptr %p) {
+  call void %p() [ "cfi"(metadata !"t", i32 0) ]
+  ret void
+}
+
 ;--- ok.ll
 ; An internal type identifier is a distinct node rather than a string, as for
-; llvm.type.test.
-define void @f(ptr %p) {
+; llvm.type.test. A second operand names the checked pointer (a virtual call's
+; vtable) when it is not the callee.
+define void @f(ptr %p, ptr %vtable) {
   call void %p() [ "cfi"(metadata !"t") ]
   call void %p() [ "cfi"(metadata !0) ]
+  call void %p() [ "cfi"(metadata !"t", ptr %vtable) ]
   ret void
 }
 

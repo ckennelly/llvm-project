@@ -10,7 +10,7 @@ target triple = "x86_64-unknown-linux-gnu"
 
 define i32 @add1(i32 %x) !type !0 {
 ; CHECK-LABEL: define i32 @add1(
-; CHECK-SAME: i32 [[X:%.*]]) !type [[META0:![0-9]+]] {
+; CHECK-SAME: i32 [[X:%.*]]) !type [[META1:![0-9]+]] {
 ; CHECK-NEXT:    [[R:%.*]] = add i32 [[X]], 1
 ; CHECK-NEXT:    ret i32 [[R]]
 ;
@@ -22,7 +22,7 @@ define i32 @call_it(ptr %f, i32 %x) {
 ; CHECK-LABEL: define i32 @call_it(
 ; CHECK-SAME: ptr [[F:%.*]], i32 [[X:%.*]]) {
 ; CHECK-NEXT:    [[TMP1:%.*]] = icmp eq ptr [[F]], @add1
-; CHECK-NEXT:    br i1 [[TMP1]], label %[[IF_TRUE_DIRECT_TARG:.*]], label %[[IF_FALSE_ORIG_INDIRECT:.*]], !prof [[PROF1:![0-9]+]]
+; CHECK-NEXT:    br i1 [[TMP1]], label %[[IF_TRUE_DIRECT_TARG:.*]], label %[[IF_FALSE_ORIG_INDIRECT:.*]], !prof [[PROF2:![0-9]+]]
 ; CHECK:       [[IF_TRUE_DIRECT_TARG]]:
 ; CHECK-NEXT:    [[TMP2:%.*]] = call i32 @add1(i32 [[X]]) [ "cfi"(metadata !"_ZTSFiiE") ]
 ; CHECK-NEXT:    br label %[[IF_END_ICP:.*]]
@@ -37,9 +37,45 @@ define i32 @call_it(ptr %f, i32 %x) {
   ret i32 %r
 }
 
+; A virtual call: the bundle names the vtable rather than the callee, and is
+; copied to both arms just the same.
+@_ZTV1A = hidden constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @A_f] }, !type !2
+
+define void @A_f(ptr %this) {
+; CHECK-LABEL: define void @A_f(
+; CHECK-SAME: ptr [[THIS:%.*]]) {
+; CHECK-NEXT:    ret void
+;
+  ret void
+}
+
+define void @vcall(ptr %obj) {
+; CHECK-LABEL: define void @vcall(
+; CHECK-SAME: ptr [[OBJ:%.*]]) {
+; CHECK-NEXT:    [[VTABLE:%.*]] = load ptr, ptr [[OBJ]], align 8
+; CHECK-NEXT:    [[VFN:%.*]] = load ptr, ptr [[VTABLE]], align 8
+; CHECK-NEXT:    [[TMP1:%.*]] = icmp eq ptr [[VFN]], @A_f
+; CHECK-NEXT:    br i1 [[TMP1]], label %[[IF_TRUE_DIRECT_TARG:.*]], label %[[IF_FALSE_ORIG_INDIRECT:.*]], !prof [[PROF2]]
+; CHECK:       [[IF_TRUE_DIRECT_TARG]]:
+; CHECK-NEXT:    call void @A_f(ptr [[OBJ]]) [ "cfi"(metadata !"_ZTS1A", ptr [[VTABLE]]) ]
+; CHECK-NEXT:    br label %[[IF_END_ICP:.*]]
+; CHECK:       [[IF_FALSE_ORIG_INDIRECT]]:
+; CHECK-NEXT:    call void [[VFN]](ptr [[OBJ]]) [ "cfi"(metadata !"_ZTS1A", ptr [[VTABLE]]) ]
+; CHECK-NEXT:    br label %[[IF_END_ICP]]
+; CHECK:       [[IF_END_ICP]]:
+; CHECK-NEXT:    ret void
+;
+  %vtable = load ptr, ptr %obj
+  %vfn = load ptr, ptr %vtable
+  call void %vfn(ptr %obj) [ "cfi"(metadata !"_ZTS1A", ptr %vtable) ], !prof !3
+  ret void
+}
+
 !0 = !{i64 0, !"_ZTSFiiE"}
 !1 = !{!"VP", i32 0, i64 1000, i64 -8030161760475241492, i64 900}
+!2 = !{i64 16, !"_ZTS1A"}
+!3 = !{!"VP", i32 0, i64 1000, i64 -3537498394360213804, i64 900}
 ;.
-; CHECK: [[META0]] = !{i64 0, !"_ZTSFiiE"}
-; CHECK: [[PROF1]] = !{!"branch_weights", i32 900, i32 100}
+; CHECK: [[META1]] = !{i64 0, !"_ZTSFiiE"}
+; CHECK: [[PROF2]] = !{!"branch_weights", i32 900, i32 100}
 ;.

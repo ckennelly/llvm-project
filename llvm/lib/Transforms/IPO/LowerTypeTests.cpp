@@ -2437,11 +2437,12 @@ bool lowertypetests::cleanUpTypeCheckedLoad(Module &M, Function &CheckedLoadFn,
 }
 
 /// Remove every cfi operand bundle in the module. If \p Lower is set, an
-/// indirect call's bundle is replaced by an explicit llvm.type.test of the
-/// called operand that traps on failure; otherwise the bundles are simply
-/// dropped. Bundles on direct calls are always dropped: a direct call cannot be
-/// redirected, so the check is vacuous. \p SkipCheck selects indirect calls
-/// that are deliberately left unchecked.
+/// indirect call's bundle is replaced by an explicit llvm.type.test that traps
+/// on failure, of the called operand or, for a virtual call, of the vtable the
+/// bundle names; otherwise the bundles are simply dropped. Bundles on direct
+/// calls are always dropped: a direct call cannot be redirected, so the check
+/// is vacuous. \p SkipCheck selects indirect calls that are deliberately left
+/// unchecked.
 static bool
 lowerOrDropCfiOperandBundles(Module &M, bool Lower,
                              function_ref<bool(CallBase &)> SkipCheck) {
@@ -2457,7 +2458,10 @@ lowerOrDropCfiOperandBundles(Module &M, bool Lower,
   LLVMContext &Ctx = M.getContext();
   MDNode *LikelyWeights = MDBuilder(Ctx).createLikelyBranchWeights();
   for (CallBase *CB : Calls) {
-    Value *TypeId = CB->getOperandBundle(LLVMContext::OB_cfi)->Inputs[0];
+    auto Bundle = CB->getOperandBundle(LLVMContext::OB_cfi);
+    Value *TypeId = Bundle->Inputs[0];
+    Value *Checked = Bundle->Inputs.size() == 2 ? Bundle->Inputs[1].get()
+                                                : CB->getCalledOperand();
     CallBase *Call = CallBase::removeOperandBundle(CB, LLVMContext::OB_cfi,
                                                    CB->getIterator());
     assert(Call != CB);
@@ -2477,10 +2481,10 @@ lowerOrDropCfiOperandBundles(Module &M, bool Lower,
     }
 
     // Emit the type test and trap if it fails. The trap is the same
-    // llvm.ubsantrap that clang emits for -fsanitize=cfi-icall in trap mode.
+    // llvm.ubsantrap that clang emits for -fsanitize=cfi-* in trap mode.
     IRBuilder<> B(Call);
-    Value *Test = B.CreateIntrinsic(Intrinsic::type_test, {},
-                                    {Call->getCalledOperand(), TypeId});
+    Value *Test =
+        B.CreateIntrinsic(Intrinsic::type_test, {}, {Checked, TypeId});
     Instruction *ElseTerm = SplitBlockAndInsertIfElse(
         Test, Call, /*Unreachable=*/true, LikelyWeights);
     B.SetInsertPoint(ElseTerm);

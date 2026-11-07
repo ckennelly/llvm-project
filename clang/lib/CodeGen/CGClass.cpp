@@ -2790,10 +2790,37 @@ LeastDerivedClassWithSameLayout(const CXXRecordDecl *RD) {
       RD->bases_begin()->getType()->getAsCXXRecordDecl());
 }
 
+bool CodeGenFunction::EmitVTablePtrCheckAsCFIBundle(const CXXRecordDecl *RD,
+                                                    llvm::Value *VTable) {
+  // Only the trapping, non-cross-DSO configuration is expressed as a bundle,
+  // as for cfi-icall.
+  if (!CGM.getCodeGenOpts().SanitizeCfiICallOperandBundle ||
+      CGM.getCodeGenOpts().SanitizeCfiCrossDso ||
+      !CGM.getCodeGenOpts().SanitizeTrap.has(SanitizerKind::CFIVCall))
+    return false;
+
+  // The same conditions under which EmitVTablePtrCheck emits nothing.
+  if (!SanOpts.has(SanitizerKind::CFICastStrict))
+    RD = LeastDerivedClassWithSameLayout(RD);
+  if (!CGM.HasHiddenLTOVisibility(RD))
+    return true;
+  if (getContext().getNoSanitizeList().containsType(
+          SanitizerKind::CFIVCall, RD->getQualifiedNameAsString()))
+    return true;
+
+  EmitSanitizerStatReport(llvm::SanStat_CFI_VCall);
+  CanQualType T = CGM.getContext().getCanonicalTagType(RD);
+  // The bundle means "VTable is a member of RD's type id"; EmitCall attaches it
+  // to the virtual call it is about to emit.
+  CFIBundle = {CGM.CreateMetadataIdentifierForType(T), VTable};
+  return true;
+}
+
 void CodeGenFunction::EmitTypeMetadataCodeForVCall(const CXXRecordDecl *RD,
                                                    llvm::Value *VTable,
                                                    SourceLocation Loc) {
-  if (SanOpts.has(SanitizerKind::CFIVCall))
+  if (SanOpts.has(SanitizerKind::CFIVCall) &&
+      !EmitVTablePtrCheckAsCFIBundle(RD, VTable))
     EmitVTablePtrCheckForCall(RD, VTable, CodeGenFunction::CFITCK_VCall, Loc);
   // Emit the intrinsics of (type_test and assume) for the features of WPD and
   // speculative devirtualization. For WPD, emit the intrinsics only for the

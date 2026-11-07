@@ -4410,14 +4410,19 @@ void Verifier::visitCallBase(CallBase &Call) {
     } else if (Tag == LLVMContext::OB_cfi) {
       Check(!FoundCFIBundle, "Multiple cfi operand bundles", Call);
       FoundCFIBundle = true;
-      Check(BU.Inputs.size() == 1, "Expected exactly one cfi bundle operand",
-            Call);
+      Check(BU.Inputs.size() == 1 || BU.Inputs.size() == 2,
+            "Expected one or two cfi bundle operands", Call);
       // The type identifier is what llvm.type.test takes: a string for an
       // external type, a distinct node for an internal one.
       auto *MDV = dyn_cast<MetadataAsValue>(BU.Inputs[0]);
       Check(MDV && (isa<MDString>(MDV->getMetadata()) ||
                     isa<MDNode>(MDV->getMetadata())),
             "Cfi bundle operand must be a metadata type identifier", Call);
+      // The optional second operand is the checked pointer (a virtual call's
+      // vtable); without it the called operand is checked.
+      if (BU.Inputs.size() == 2)
+        Check(BU.Inputs[1]->getType()->isPointerTy(),
+              "Second cfi bundle operand must be a pointer", Call);
     } else if (Tag == LLVMContext::OB_preallocated) {
       Check(!FoundPreallocatedBundle, "Multiple preallocated operand bundles",
             Call);

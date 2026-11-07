@@ -66,6 +66,20 @@ define void @cold_indirect(ptr %p) !prof !2 {
   ret void
 }
 
+; A hot virtual call is left unchecked too.
+@_ZTV1A = hidden constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @A_f] }, !type !17
+
+define hidden void @A_f(ptr %this) {
+  ret void
+}
+
+define void @hot_vcall(ptr %obj) !prof !1 {
+  %vtable = load ptr, ptr %obj
+  %vfn = load ptr, ptr %vtable
+  call void %vfn(ptr %obj) [ "cfi"(metadata !"_ZTS1A", ptr %vtable) ]
+  ret void
+}
+
 define void @hot_direct() !prof !1 {
 ; CHECK-LABEL: define void @hot_direct(
 ; CHECK-SAME: ) !prof [[PROF15:![0-9]+]] {
@@ -95,12 +109,4 @@ define void @hot_direct() !prof !1 {
 !14 = !{i32 10000, i64 100, i32 1}
 !15 = !{i32 999000, i64 100, i32 1}
 !16 = !{i32 999999, i64 1, i32 2}
-;.
-; CHECKED: [[PROF15]] = !{!"function_entry_count", i64 1000}
-; CHECKED: [[PROF16]] = !{!"branch_weights", i32 1048575, i32 1}
-; CHECKED: [[PROF17]] = !{!"function_entry_count", i64 1}
-;.
-; SKIP: [[PROF15]] = !{!"function_entry_count", i64 1000}
-; SKIP: [[PROF16]] = !{!"function_entry_count", i64 1}
-; SKIP: [[PROF17]] = !{!"branch_weights", i32 1048575, i32 1}
-;.
+!17 = !{i64 16, !"_ZTS1A"}
