@@ -29,7 +29,7 @@ define void @hot_indirect(ptr %p) !prof !1 {
 ; CHECKED-NEXT:    ret void
 ;
 ; SKIP-LABEL: define void @hot_indirect(
-; SKIP-SAME: ptr [[P:%.*]]) !prof [[PROF15:![0-9]+]] {
+; SKIP-SAME: ptr [[P:%.*]]) !prof [[PROF16:![0-9]+]] {
 ; SKIP-NEXT:    call void [[P]]()
 ; SKIP-NEXT:    ret void
 ;
@@ -51,10 +51,10 @@ define void @cold_indirect(ptr %p) !prof !2 {
 ; CHECKED-NEXT:    ret void
 ;
 ; SKIP-LABEL: define void @cold_indirect(
-; SKIP-SAME: ptr [[P:%.*]]) !prof [[PROF16:![0-9]+]] {
+; SKIP-SAME: ptr [[P:%.*]]) !prof [[PROF17:![0-9]+]] {
 ; SKIP-NEXT:    [[TMP1:%.*]] = ptrtoint ptr [[P]] to i64
 ; SKIP-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], ptrtoint (ptr @.cfi.jumptable to i64)
-; SKIP-NEXT:    br i1 [[TMP2]], label %[[BB4:.*]], label %[[BB3:.*]], !prof [[PROF17:![0-9]+]]
+; SKIP-NEXT:    br i1 [[TMP2]], label %[[BB4:.*]], label %[[BB3:.*]], !prof [[PROF18:![0-9]+]]
 ; SKIP:       [[BB3]]:
 ; SKIP-NEXT:    call void @llvm.ubsantrap(i8 2) #[[ATTR3:[0-9]+]]
 ; SKIP-NEXT:    unreachable
@@ -70,10 +70,35 @@ define void @cold_indirect(ptr %p) !prof !2 {
 @_ZTV1A = hidden constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @A_f] }, !type !17
 
 define hidden void @A_f(ptr %this) {
+; CHECK-LABEL: define hidden void @A_f(
+; CHECK-SAME: ptr [[THIS:%.*]]) {
+; CHECK-NEXT:    ret void
+;
   ret void
 }
 
 define void @hot_vcall(ptr %obj) !prof !1 {
+; CHECKED-LABEL: define void @hot_vcall(
+; CHECKED-SAME: ptr [[OBJ:%.*]]) !prof [[PROF15]] {
+; CHECKED-NEXT:    [[VTABLE:%.*]] = load ptr, ptr [[OBJ]], align 8
+; CHECKED-NEXT:    [[VFN:%.*]] = load ptr, ptr [[VTABLE]], align 8
+; CHECKED-NEXT:    [[TMP1:%.*]] = ptrtoint ptr [[VTABLE]] to i64
+; CHECKED-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], ptrtoint (ptr getelementptr (i8, ptr @[[GLOB0:[0-9]+]], i64 16) to i64)
+; CHECKED-NEXT:    br i1 [[TMP2]], label %[[BB4:.*]], label %[[BB3:.*]], !prof [[PROF16]]
+; CHECKED:       [[BB3]]:
+; CHECKED-NEXT:    call void @llvm.ubsantrap(i8 2) #[[ATTR3]]
+; CHECKED-NEXT:    unreachable
+; CHECKED:       [[BB4]]:
+; CHECKED-NEXT:    call void [[VFN]](ptr [[OBJ]])
+; CHECKED-NEXT:    ret void
+;
+; SKIP-LABEL: define void @hot_vcall(
+; SKIP-SAME: ptr [[OBJ:%.*]]) !prof [[PROF16]] {
+; SKIP-NEXT:    [[VTABLE:%.*]] = load ptr, ptr [[OBJ]], align 8
+; SKIP-NEXT:    [[VFN:%.*]] = load ptr, ptr [[VTABLE]], align 8
+; SKIP-NEXT:    call void [[VFN]](ptr [[OBJ]])
+; SKIP-NEXT:    ret void
+;
   %vtable = load ptr, ptr %obj
   %vfn = load ptr, ptr %vtable
   call void %vfn(ptr %obj) [ "cfi"(metadata !"_ZTS1A", ptr %vtable) ]
@@ -81,10 +106,15 @@ define void @hot_vcall(ptr %obj) !prof !1 {
 }
 
 define void @hot_direct() !prof !1 {
-; CHECK-LABEL: define void @hot_direct(
-; CHECK-SAME: ) !prof [[PROF15:![0-9]+]] {
-; CHECK-NEXT:    call void @f.cfi()
-; CHECK-NEXT:    ret void
+; CHECKED-LABEL: define void @hot_direct(
+; CHECKED-SAME: ) !prof [[PROF15]] {
+; CHECKED-NEXT:    call void @f.cfi()
+; CHECKED-NEXT:    ret void
+;
+; SKIP-LABEL: define void @hot_direct(
+; SKIP-SAME: ) !prof [[PROF16]] {
+; SKIP-NEXT:    call void @f.cfi()
+; SKIP-NEXT:    ret void
 ;
   call void @f() [ "cfi"(metadata !"typeid1") ]
   ret void
@@ -110,3 +140,12 @@ define void @hot_direct() !prof !1 {
 !15 = !{i32 999000, i64 100, i32 1}
 !16 = !{i32 999999, i64 1, i32 2}
 !17 = !{i64 16, !"_ZTS1A"}
+;.
+; CHECKED: [[PROF15]] = !{!"function_entry_count", i64 1000}
+; CHECKED: [[PROF16]] = !{!"branch_weights", i32 1048575, i32 1}
+; CHECKED: [[PROF17]] = !{!"function_entry_count", i64 1}
+;.
+; SKIP: [[PROF16]] = !{!"function_entry_count", i64 1000}
+; SKIP: [[PROF17]] = !{!"function_entry_count", i64 1}
+; SKIP: [[PROF18]] = !{!"branch_weights", i32 1048575, i32 1}
+;.
