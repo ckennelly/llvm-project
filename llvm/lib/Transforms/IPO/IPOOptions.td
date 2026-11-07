@@ -88,6 +88,9 @@ defm : BoolField<"lowertypetests-jump-table-debug-info", "true",
   "Enable debug info generation for jump tables">;
 defm : ValueField<"lowertypetests-read-summary", "StringRef", "",
   "Read summary from given textual assembly or YAML file before running pass">;
+defm : BoolField<"lowertypetests-skip-hot-cfi-bundles", "false",
+  "Drop the cfi operand bundle, i.e. emit no check, on indirect calls the "
+  "profile marks hot">;
 defm : EnumField<"lowertypetests-summary-action", "PassSummaryAction", "",
   "none,import,export",
   ["PassSummaryAction::None", "PassSummaryAction::Import", "PassSummaryAction::Export"],

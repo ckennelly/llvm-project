@@ -109,6 +109,8 @@ STATISTIC(NumCfiBundlesLowered,
           "Number of cfi operand bundles lowered to type tests");
 STATISTIC(NumCfiBundlesDirect,
           "Number of cfi operand bundles dropped from direct calls");
+STATISTIC(NumCfiBundlesSkippedHot,
+          "Number of cfi operand bundles dropped from hot indirect calls");
 STATISTIC(NumTypeIdDisjointSets, "Number of disjoint sets of type identifiers");
 
 bool BitSetInfo::containsGlobalOffset(uint64_t Offset) const {
@@ -687,6 +689,9 @@ class LowerTypeTestsModule {
 
   ModuleSummaryIndex *ExportSummary;
   const ModuleSummaryIndex *ImportSummary;
+
+  FunctionAnalysisManager *FAM;
+  ProfileSummaryInfo *PSI;
 
   Triple::ArchType Arch;
   Triple::OSType OS;
@@ -2261,7 +2266,8 @@ LowerTypeTestsModule::LowerTypeTestsModule(
   assert(!(ExportSummary && ImportSummary));
   Triple TargetTriple(M.getTargetTriple());
   Arch = TargetTriple.getArch();
-  auto &FAM = AM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
+  FAM = &AM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
+  PSI = &AM.getResult<ProfileSummaryAnalysis>(M);
 
   if (Arch == Triple::arm)
     CanUseArmJumpTable = true;
@@ -2270,7 +2276,7 @@ LowerTypeTestsModule::LowerTypeTestsModule(
       // Skip declarations since we should not query the TTI for them.
       if (F.isDeclaration())
         continue;
-      auto &TTI = FAM.getResult<TargetIRAnalysis>(F);
+      auto &TTI = FAM->getResult<TargetIRAnalysis>(F);
       if (TTI.hasArmWideBranch(false))
         CanUseArmJumpTable = true;
       if (TTI.hasArmWideBranch(true))
@@ -2434,8 +2440,11 @@ bool lowertypetests::cleanUpTypeCheckedLoad(Module &M, Function &CheckedLoadFn,
 /// indirect call's bundle is replaced by an explicit llvm.type.test of the
 /// called operand that traps on failure; otherwise the bundles are simply
 /// dropped. Bundles on direct calls are always dropped: a direct call cannot be
-/// redirected, so the check is vacuous.
-static bool lowerOrDropCfiOperandBundles(Module &M, bool Lower) {
+/// redirected, so the check is vacuous. \p SkipCheck selects indirect calls
+/// that are deliberately left unchecked.
+static bool
+lowerOrDropCfiOperandBundles(Module &M, bool Lower,
+                             function_ref<bool(CallBase &)> SkipCheck) {
   SmallVector<CallBase *, 16> Calls;
   for (Function &F : M)
     for (Instruction &I : instructions(F))
@@ -2462,6 +2471,10 @@ static bool lowerOrDropCfiOperandBundles(Module &M, bool Lower) {
       ++NumCfiBundlesDirect;
       continue;
     }
+    if (SkipCheck(*Call)) {
+      ++NumCfiBundlesSkippedHot;
+      continue;
+    }
 
     // Emit the type test and trap if it fails. The trap is the same
     // llvm.ubsantrap that clang emits for -fsanitize=cfi-icall in trap mode.
@@ -2482,7 +2495,18 @@ static bool lowerOrDropCfiOperandBundles(Module &M, bool Lower) {
 }
 
 bool LowerTypeTestsModule::lowerCfiOperandBundles() {
-  return lowerOrDropCfiOperandBundles(M, /*Lower=*/true);
+  // An indirect call that is still hot at this point survived indirect call
+  // promotion, so it is both where the check costs the most and where the
+  // attacker has the most legitimate targets to choose from. Leaving such
+  // calls unchecked is a deliberate trade and is off by default.
+  auto SkipCheck = [&](CallBase &CB) {
+    if (!Opts.lowertypetests_skip_hot_cfi_bundles)
+      return false;
+    BlockFrequencyInfo &BFI =
+        FAM->getResult<BlockFrequencyAnalysis>(*CB.getFunction());
+    return PSI->isHotCallSite(CB, &BFI);
+  };
+  return lowerOrDropCfiOperandBundles(M, /*Lower=*/true, SkipCheck);
 }
 
 static void dropTypeTests(Module &M, Function &TypeTestFunc,
@@ -2510,7 +2534,8 @@ static void dropTypeTests(Module &M, Function &TypeTestFunc,
 }
 
 static bool dropTypeTests(Module &M, bool ShouldDropAll) {
-  bool DroppedBundles = lowerOrDropCfiOperandBundles(M, /*Lower=*/false);
+  bool DroppedBundles = lowerOrDropCfiOperandBundles(
+      M, /*Lower=*/false, [](CallBase &) { return false; });
   Function *TypeTestFunc =
       Intrinsic::getDeclarationIfExists(&M, Intrinsic::type_test);
   if (TypeTestFunc)
