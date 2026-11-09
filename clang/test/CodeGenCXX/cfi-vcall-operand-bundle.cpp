@@ -1,7 +1,11 @@
 // RUN: %clang_cc1 -triple x86_64-unknown-linux -O1 -disable-llvm-passes -fvisibility=hidden -fsanitize=cfi-vcall -fsanitize-trap=cfi-vcall -fsanitize-cfi-icall-experimental-operand-bundle -emit-llvm -o - %s | FileCheck %s --check-prefix=BUNDLE
 // RUN: %clang_cc1 -triple x86_64-unknown-linux -O1 -disable-llvm-passes -fvisibility=hidden -fsanitize=cfi-vcall -fsanitize-trap=cfi-vcall -emit-llvm -o - %s | FileCheck %s --check-prefix=EXPLICIT
-// With whole-program vtables the check stays fused into the type checked load.
+// With whole-program vtables the devirtualization hint is the plain type test
+// and assume, as without CFI, and the check is still the bundle.
 // RUN: %clang_cc1 -triple x86_64-unknown-linux -O1 -disable-llvm-passes -fvisibility=hidden -fsanitize=cfi-vcall -fsanitize-trap=cfi-vcall -fwhole-program-vtables -fsanitize-cfi-icall-experimental-operand-bundle -emit-llvm -o - %s | FileCheck %s --check-prefix=WPD
+// Virtual function elimination is defined in terms of the type checked load,
+// which therefore stays.
+// RUN: %clang_cc1 -triple x86_64-unknown-linux -O1 -disable-llvm-passes -fvisibility=hidden -fsanitize=cfi-vcall -fsanitize-trap=cfi-vcall -fwhole-program-vtables -fvirtual-function-elimination -fsanitize-cfi-icall-experimental-operand-bundle -emit-llvm -o - %s | FileCheck %s --check-prefix=VFE
 // A class with public LTO visibility is not checked either way.
 // RUN: %clang_cc1 -triple x86_64-unknown-linux -O1 -disable-llvm-passes -fsanitize=cfi-vcall -fsanitize-trap=cfi-vcall -fsanitize-cfi-icall-experimental-operand-bundle -emit-llvm -o - %s | FileCheck %s --check-prefix=PUBLIC
 
@@ -26,8 +30,16 @@ struct A {
 // EXPLICIT-NOT: "cfi"
 
 // WPD-LABEL: define hidden void @_Z5vcallP1A(
-// WPD: @llvm.type.checked.load(ptr %{{.*}}, i32 0, metadata !"_ZTS1A")
-// WPD-NOT: "cfi"
+// WPD: %vtable = load ptr, ptr %{{.*}}, align 8
+// WPD-NEXT: %[[TEST:.*]] = call i1 @llvm.type.test(ptr %vtable, metadata !"_ZTS1A")
+// WPD-NEXT: call void @llvm.assume(i1 %[[TEST]])
+// WPD-NOT: @llvm.type.checked.load
+// WPD: %[[VFN:.*]] = load ptr, ptr %vfn, align 8
+// WPD-NEXT: call void %[[VFN]](ptr {{.*}}) [ "cfi"(metadata !"_ZTS1A", ptr %vtable) ]
+
+// VFE-LABEL: define hidden void @_Z5vcallP1A(
+// VFE: @llvm.type.checked.load(ptr %{{.*}}, i32 0, metadata !"_ZTS1A")
+// VFE-NOT: "cfi"
 
 // PUBLIC-LABEL: define{{.*}} void @_Z5vcallP1A(
 // PUBLIC-NOT: @llvm.type.test

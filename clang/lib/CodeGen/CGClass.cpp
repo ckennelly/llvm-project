@@ -2999,6 +2999,13 @@ bool CodeGenFunction::ShouldEmitVTableTypeCheckedLoad(const CXXRecordDecl *RD) {
       !CGM.getCodeGenOpts().SanitizeTrap.has(SanitizerKind::CFIVCall))
     return false;
 
+  // With the operand bundle model the check travels with the call and
+  // devirtualization works from the plain type test and assume, as it does
+  // without CFI; the fused checked load is not needed.
+  if (CGM.getCodeGenOpts().SanitizeCfiICallOperandBundle &&
+      !CGM.getCodeGenOpts().SanitizeCfiCrossDso)
+    return false;
+
   std::string TypeName = RD->getQualifiedNameAsString();
   return !getContext().getNoSanitizeList().containsType(SanitizerKind::CFIVCall,
                                                         TypeName);
