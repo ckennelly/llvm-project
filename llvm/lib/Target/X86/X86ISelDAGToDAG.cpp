@@ -4381,6 +4381,7 @@ bool X86DAGToDAGISel::matchBitExtract(SDNode *Node) {
     }
   } else if (matchLowBitMask(SDValue(Node, 0))) {
     X = CurDAG->getAllOnesConstant(SDLoc(Node), NVT);
+    insertDAGNode(*CurDAG, SDValue(Node, 0), X);
   } else if (!matchPatternD(Node))
     return false;
 

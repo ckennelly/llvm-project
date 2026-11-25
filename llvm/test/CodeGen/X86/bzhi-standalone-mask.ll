@@ -256,5 +256,184 @@ define i32 @not_mask32(i32 %n) nounwind {
   %mask = xor i32 %shl, 255
   ret i32 %mask
 }
+
+; The all-ones operands below are not literal constants of the mask type, so
+; the BZHI source is a constant that isel creates itself and must still select.
+
+; Constant hoisting makes 0xFFFFFFFF opaque, and the narrowed xor keeps
+; trunc(opaque 0xFFFFFFFF) as its all-ones operand.
+define i64 @mask32_opaque_allones(i64 %n) nounwind {
+; X86-LABEL: mask32_opaque_allones:
+; X86:       # %bb.0:
+; X86-NEXT:    movb $64, %al
+; X86-NEXT:    subb {{[0-9]+}}(%esp), %al
+; X86-NEXT:    movl $-1, %ecx
+; X86-NEXT:    testb $32, %al
+; X86-NEXT:    movl $0, %edx
+; X86-NEXT:    jne .LBB6_2
+; X86-NEXT:  # %bb.1:
+; X86-NEXT:    shlxl %eax, %ecx, %edx
+; X86-NEXT:  .LBB6_2:
+; X86-NEXT:    notb %dl
+; X86-NEXT:    testb $32, %dl
+; X86-NEXT:    movl $0, %eax
+; X86-NEXT:    jne .LBB6_4
+; X86-NEXT:  # %bb.3:
+; X86-NEXT:    shlxl %edx, %ecx, %eax
+; X86-NEXT:  .LBB6_4:
+; X86-NEXT:    notl %eax
+; X86-NEXT:    xorl %edx, %edx
+; X86-NEXT:    retl
+;
+; X64-NOBMI-LABEL: mask32_opaque_allones:
+; X64-NOBMI:       # %bb.0:
+; X64-NOBMI-NEXT:    movq %rdi, %rcx
+; X64-NOBMI-NEXT:    negb %cl
+; X64-NOBMI-NEXT:    movq $-1, %rax
+; X64-NOBMI-NEXT:    # kill: def $cl killed $cl killed $rcx
+; X64-NOBMI-NEXT:    shlq %cl, %rax
+; X64-NOBMI-NEXT:    movl $4294967295, %edx # imm = 0xFFFFFFFF
+; X64-NOBMI-NEXT:    movl $4294967295, %ecx # imm = 0xFFFFFFFF
+; X64-NOBMI-NEXT:    xorl %eax, %ecx
+; X64-NOBMI-NEXT:    movl $4294967295, %eax # imm = 0xFFFFFFFF
+; X64-NOBMI-NEXT:    shrq %cl, %rax
+; X64-NOBMI-NEXT:    # kill: def $cl killed $cl killed $rcx
+; X64-NOBMI-NEXT:    shlq %cl, %rax
+; X64-NOBMI-NEXT:    xorq %rdx, %rax
+; X64-NOBMI-NEXT:    retq
+;
+; X64-BMI1-LABEL: mask32_opaque_allones:
+; X64-BMI1:       # %bb.0:
+; X64-BMI1-NEXT:    movq %rdi, %rcx
+; X64-BMI1-NEXT:    negb %cl
+; X64-BMI1-NEXT:    movq $-1, %rax
+; X64-BMI1-NEXT:    # kill: def $cl killed $cl killed $rcx
+; X64-BMI1-NEXT:    shlq %cl, %rax
+; X64-BMI1-NEXT:    movl $4294967295, %edx # imm = 0xFFFFFFFF
+; X64-BMI1-NEXT:    movl $4294967295, %ecx # imm = 0xFFFFFFFF
+; X64-BMI1-NEXT:    xorl %eax, %ecx
+; X64-BMI1-NEXT:    movl $4294967295, %eax # imm = 0xFFFFFFFF
+; X64-BMI1-NEXT:    shrq %cl, %rax
+; X64-BMI1-NEXT:    # kill: def $cl killed $cl killed $rcx
+; X64-BMI1-NEXT:    shlq %cl, %rax
+; X64-BMI1-NEXT:    xorq %rdx, %rax
+; X64-BMI1-NEXT:    retq
+;
+; X64-BMI2-LABEL: mask32_opaque_allones:
+; X64-BMI2:       # %bb.0:
+; X64-BMI2-NEXT:    movb $64, %al
+; X64-BMI2-NEXT:    subb %dil, %al
+; X64-BMI2-NEXT:    movl $-1, %ecx
+; X64-BMI2-NEXT:    bzhil %eax, %ecx, %eax
+; X64-BMI2-NEXT:    movl $4294967295, %ecx # imm = 0xFFFFFFFF
+; X64-BMI2-NEXT:    shrxq %rax, %rcx, %rdx
+; X64-BMI2-NEXT:    shlxq %rax, %rdx, %rax
+; X64-BMI2-NEXT:    xorq %rcx, %rax
+; X64-BMI2-NEXT:    retq
+  %sub = sub i64 64, %n
+  %shl = shl nsw i64 -1, %sub
+  %not = and i64 %shl, 4294967295
+  %amt = xor i64 %not, 4294967295
+  %shl1 = shl nsw i64 -1, %amt
+  %not1 = and i64 %shl1, 4294967295
+  %mask = xor i64 %not1, 4294967295
+  ret i64 %mask
+}
+
+; All-ones only through known bits.
+define i32 @mask32_knownbits_allones(ptr %p, ptr %q, i32 %n) nounwind {
+; X86-LABEL: mask32_knownbits_allones:
+; X86:       # %bb.0:
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %eax
+; X86-NEXT:    movl $-1, %ecx
+; X86-NEXT:    bzhil %eax, %ecx, %eax
+; X86-NEXT:    retl
+;
+; X64-NOBMI-LABEL: mask32_knownbits_allones:
+; X64-NOBMI:       # %bb.0:
+; X64-NOBMI-NEXT:    movl %edx, %ecx
+; X64-NOBMI-NEXT:    movl (%rdi), %eax
+; X64-NOBMI-NEXT:    # kill: def $cl killed $cl killed $ecx
+; X64-NOBMI-NEXT:    shll %cl, %eax
+; X64-NOBMI-NEXT:    xorl (%rsi), %eax
+; X64-NOBMI-NEXT:    retq
+;
+; X64-BMI1-LABEL: mask32_knownbits_allones:
+; X64-BMI1:       # %bb.0:
+; X64-BMI1-NEXT:    movl %edx, %ecx
+; X64-BMI1-NEXT:    movl (%rdi), %eax
+; X64-BMI1-NEXT:    # kill: def $cl killed $cl killed $ecx
+; X64-BMI1-NEXT:    shll %cl, %eax
+; X64-BMI1-NEXT:    xorl (%rsi), %eax
+; X64-BMI1-NEXT:    retq
+;
+; X64-BMI2-LABEL: mask32_knownbits_allones:
+; X64-BMI2:       # %bb.0:
+; X64-BMI2-NEXT:    movl $-1, %eax
+; X64-BMI2-NEXT:    bzhil %edx, %eax, %eax
+; X64-BMI2-NEXT:    retq
+  %a = load i32, ptr %p, !range !0
+  %b = load i32, ptr %q, !range !0
+  %shl = shl i32 %a, %n
+  %mask = xor i32 %shl, %b
+  ret i32 %mask
+}
+
+define i64 @mask64_knownbits_allones(ptr %p, ptr %q, i64 %n) nounwind {
+; X86-LABEL: mask64_knownbits_allones:
+; X86:       # %bb.0:
+; X86-NEXT:    pushl %edi
+; X86-NEXT:    pushl %esi
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %esi
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
+; X86-NEXT:    movl (%eax), %edi
+; X86-NEXT:    movl 4(%eax), %edx
+; X86-NEXT:    shlxl %ecx, %edi, %eax
+; X86-NEXT:    shldl %cl, %edi, %edx
+; X86-NEXT:    testb $32, %cl
+; X86-NEXT:    je .LBB8_2
+; X86-NEXT:  # %bb.1:
+; X86-NEXT:    movl %eax, %edx
+; X86-NEXT:    xorl %eax, %eax
+; X86-NEXT:  .LBB8_2:
+; X86-NEXT:    xorl 4(%esi), %edx
+; X86-NEXT:    xorl (%esi), %eax
+; X86-NEXT:    popl %esi
+; X86-NEXT:    popl %edi
+; X86-NEXT:    retl
+;
+; X64-NOBMI-LABEL: mask64_knownbits_allones:
+; X64-NOBMI:       # %bb.0:
+; X64-NOBMI-NEXT:    movq %rdx, %rcx
+; X64-NOBMI-NEXT:    movq (%rdi), %rax
+; X64-NOBMI-NEXT:    # kill: def $cl killed $cl killed $rcx
+; X64-NOBMI-NEXT:    shlq %cl, %rax
+; X64-NOBMI-NEXT:    xorq (%rsi), %rax
+; X64-NOBMI-NEXT:    retq
+;
+; X64-BMI1-LABEL: mask64_knownbits_allones:
+; X64-BMI1:       # %bb.0:
+; X64-BMI1-NEXT:    movq %rdx, %rcx
+; X64-BMI1-NEXT:    movq (%rdi), %rax
+; X64-BMI1-NEXT:    # kill: def $cl killed $cl killed $rcx
+; X64-BMI1-NEXT:    shlq %cl, %rax
+; X64-BMI1-NEXT:    xorq (%rsi), %rax
+; X64-BMI1-NEXT:    retq
+;
+; X64-BMI2-LABEL: mask64_knownbits_allones:
+; X64-BMI2:       # %bb.0:
+; X64-BMI2-NEXT:    movq $-1, %rax
+; X64-BMI2-NEXT:    bzhiq %rdx, %rax, %rax
+; X64-BMI2-NEXT:    retq
+  %a = load i64, ptr %p, !range !1
+  %b = load i64, ptr %q, !range !1
+  %shl = shl i64 %a, %n
+  %mask = xor i64 %shl, %b
+  ret i64 %mask
+}
+
+!0 = !{i32 -1, i32 0}
+!1 = !{i64 -1, i64 0}
 ;; NOTE: These prefixes are unused and the list is autogenerated. Do not add tests below this line:
 ; X64: {{.*}}
